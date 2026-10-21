@@ -1,0 +1,24 @@
+version: '0.1-synthetic'
+status: DESIGN_SYNTHETIC_HEADERS_ONLY
+format: xlsx
+columns:
+  차트번호: {target: Patient.chart_no, required: true}
+  이름: {target: Patient.name, required: true}
+  생년월일: {target: Patient.birth_date, required: true}
+  성별: {target: Patient.sex, required: true}
+  시행일시: {target: EndoscopyProcedure.performed_at, required: true}
+  내시경종류: {target: EndoscopyProcedure.type, required: true}
+  진정여부: {target: EndoscopyProcedure.sedation, required: true}
+  검체번호: {target: Specimen.seq_no, required: true}
+  채취부위: {target: Specimen.site, required: true}
+  채취방법: {target: Specimen.method, required: true}
+  채취일시: {target: Specimen.collected_at, required: true}
+  수탁기관: {target: ExternalLab.name, required: true}
+ignore: [결과원문, 병리소견, 소견, 연락처, 전화번호, 휴대전화, 주민번호, 주민등록번호, 주소, 보험정보]
+unknown_columns: reject_without_reading_values
+ignored_values: never_select_map_log_hash_or_preview_in_application
+parser_internal_reads: REQUIRES_Q16_DECISION
+group_key: [차트번호, 시행일시, 내시경종류]
+row_key: [차트번호, 시행일시, 내시경종류, 검체번호]
+initial_state: DRAFT
+historical_result_import: not_supported_in_v0_1

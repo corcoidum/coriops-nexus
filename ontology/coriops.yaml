@@ -1,0 +1,511 @@
+schema_version: '0.1-design.1'
+status: PHASE_0_REVIEW
+language: ko
+scope: endoscopy_pathology
+fhir_reference_version: '4.0.1'
+common_fields:
+  id: {type: uuid, primary_key: true, nullable: false}
+  created_at: {type: timestamptz, nullable: false}
+  updated_at: {type: timestamptz, nullable: false}
+conventions:
+  timestamps: UTC 저장, Asia/Seoul 표시, Clock 주입
+  immutable_tables: updated_at은 created_at과 동일하며 UPDATE 금지
+  identifiers: chart_no는 속성이며 PK 또는 FK로 사용 금지
+  nullable: 필드의 nullable 생략은 false
+  enum_storage: PostgreSQL TEXT + CHECK, 확장 enum은 등록 테이블 FK
+  design_additions: 명세 보완 엔티티와 필드는 docs/conflict-resolution.md 참조
+enums:
+  PatientStatus: [ACTIVE, PURGE_PENDING]
+  StaffRoleCode: [DOCTOR, ADMIN, NURSE, PRIVACY_OFFICER]
+  Sex: [FEMALE, MALE, OTHER, UNKNOWN]
+  ActorType: [STAFF, SYSTEM, AGENT]
+  ProcedureType: [EGD, COLONOSCOPY, BOTH]
+  SpecimenMethod: [BIOPSY, POLYPECTOMY, OTHER]
+  RequestStatus: [DRAFT, SHIPPED, RESULT_RECEIVED, REVIEWED, NOTIFIED, CLOSED, CANCELLED, LOST]
+  ReportSource: [MANUAL, IMPORT]
+  ResultCategory: [NORMAL, BENIGN, NEEDS_ATTENTION, MALIGNANT, UNKNOWN]
+  Urgency: [ROUTINE, PRIORITY, URGENT]
+  Instruction: [CALL, NEXT_VISIT, NONE]
+  FollowUpDirective: [REQUIRED, NOT_REQUIRED]
+  PlanStatus: [PLANNED, BOOKED, DONE, CANCELLED]
+  PlanReviewStatus: [CURRENT, RECONFIRM_REQUIRED]
+  NotificationMethod: [PHONE, VISIT, LETTER]
+  NotificationOutcome: [REACHED, NO_ANSWER, WRONG_NUMBER, REFUSED]
+  TaskStatus: [OPEN, DONE, DISMISSED, AUTO_RESOLVED]
+  Priority: [NORMAL, HIGH, URGENT]
+  AccessAction: [VIEW, PRINT, EXPORT, CREATE, UPDATE, PURGE, LOGIN, LOGOUT, LOGIN_FAIL, DENIED]
+  RuleRunStatus: [RUNNING, SUCCEEDED, FAILED]
+  PurgeStatus: [PROPOSED, APPROVED, COMPLETED, FAILED]
+  ReviewDisposition: [CHECKED, INVESTIGATE]
+  ImportStatus: [COMMITTED, REJECTED]
+registries:
+  followup_kinds:
+    PATH.ENDOSCOPY: {owner: endoscopy_pathology, meaning: 원장 지정 재내시경}
+  subject_types:
+    PATH.Request: {class: PathologyRequest, owner: endoscopy_pathology}
+    CORE.FollowUpPlan: {class: FollowUpPlan, owner: kernel}
+  disabled_actor_types: [AGENT]
+classes:
+  Patient:
+    table: patients
+    layer: kernel
+    fhir: Patient
+    fields:
+      chart_no: {type: string, unique: true}
+      name: {type: string}
+      birth_date: {type: date}
+      sex: {type: enum, enum: Sex}
+      status: {type: enum, enum: PatientStatus}
+    constraints: [환자 식별 속성은 chart_no·name·birth_date·sex만 허용]
+  Staff:
+    table: staff
+    layer: kernel
+    fhir: Practitioner
+    fields:
+      username: {type: string, unique: true}
+      display_name: {type: string}
+      password_hash: {type: string, secret: true}
+      active: {type: boolean}
+      failed_login_count: {type: integer}
+      locked_until: {type: timestamptz, nullable: true}
+    constraints: [개인 계정만 허용, 역할은 StaffRole의 복수 행으로 부여]
+  StaffRole:
+    table: staff_roles
+    layer: kernel
+    fhir: PractitionerRole
+    fields:
+      staff_id: {type: uuid, references: Staff}
+      role: {type: enum, enum: StaffRoleCode}
+    unique: [[staff_id, role]]
+  AuthSession:
+    table: auth_sessions
+    layer: kernel
+    fhir: null
+    fields:
+      staff_id: {type: uuid, references: Staff}
+      token_hash: {type: string, unique: true, secret: true}
+      last_activity_at: {type: timestamptz}
+      expires_at: {type: timestamptz}
+      revoked_at: {type: timestamptz, nullable: true}
+  SubjectReference:
+    table: subject_references
+    layer: kernel
+    fhir: null
+    fields:
+      subject_type: {type: string, registry: subject_types}
+      patient_id: {type: uuid, references: Patient}
+    unique: [[subject_type, id]]
+    constraints: [id는 실제 대상 엔티티의 UUID와 동일, 등록된 실제 대상 존재를 커밋 시 검증]
+  WorkCycle:
+    table: work_cycles
+    layer: kernel
+    fhir: null
+    fields:
+      subject_type: {type: string, registry: subject_types}
+      subject_id: {type: uuid}
+      cycle_no: {type: integer}
+      opened_at: {type: timestamptz}
+      ended_at: {type: timestamptz, nullable: true}
+      reason_code: {type: string}
+    unique: [[subject_type, subject_id, cycle_no]]
+  FollowUpKind:
+    table: followup_kinds
+    layer: kernel
+    fhir: null
+    fields:
+      code: {type: string, unique: true}
+      owner: {type: string}
+      label: {type: string}
+  FollowUpPlan:
+    table: followup_plans
+    layer: kernel
+    fhir: ServiceRequest / CarePlan
+    fields:
+      patient_id: {type: uuid, references: Patient}
+      subject_type: {type: string, registry: subject_types}
+      subject_id: {type: uuid}
+      source_cycle_id: {type: uuid, references: WorkCycle}
+      kind: {type: string, registry: followup_kinds}
+      due_date: {type: date}
+      status: {type: enum, enum: PlanStatus}
+      review_status: {type: enum, enum: PlanReviewStatus}
+      revision_no: {type: integer}
+      completed_at: {type: timestamptz, nullable: true}
+      cancellation_reason: {type: string, nullable: true}
+    constraints: [원장 지정 날짜만 저장, 정정 시 기존 날짜 자동 변경 금지, due_date 변경 시 새 WorkCycle]
+  PatientNotification:
+    table: patient_notifications
+    layer: kernel
+    fhir: Communication
+    fields:
+      subject_type: {type: string, registry: subject_types}
+      subject_id: {type: uuid}
+      cycle_id: {type: uuid, references: WorkCycle}
+      attempt_no: {type: integer}
+      method: {type: enum, enum: NotificationMethod}
+      attempted_at: {type: timestamptz}
+      outcome: {type: enum, enum: NotificationOutcome}
+      staff_id: {type: uuid, references: Staff}
+    unique: [[cycle_id, attempt_no]]
+  Rule:
+    table: rules
+    layer: kernel
+    fhir: PlanDefinition
+    fields:
+      rule_id: {type: string, unique: true}
+      params: {type: jsonb}
+      enabled: {type: boolean}
+      config_hash: {type: string}
+  RuleRun:
+    table: rule_runs
+    layer: kernel
+    fhir: null
+    fields:
+      rule_id: {type: uuid, references: Rule}
+      actor_type: {type: enum, enum: ActorType}
+      evaluated_at: {type: timestamptz}
+      finished_at: {type: timestamptz, nullable: true}
+      status: {type: enum, enum: RuleRunStatus}
+      config_hash: {type: string}
+      candidate_count: {type: integer}
+      error_code: {type: string, nullable: true}
+  Task:
+    table: tasks
+    layer: kernel
+    fhir: Task
+    fields:
+      rule_id: {type: uuid, references: Rule}
+      subject_type: {type: string, registry: subject_types}
+      subject_id: {type: uuid}
+      cycle_id: {type: uuid, references: WorkCycle}
+      dedupe_key: {type: string, unique: true}
+      title: {type: string}
+      priority: {type: enum, enum: Priority}
+      assignee_role: {type: enum, enum: StaffRoleCode}
+      opened_at: {type: timestamptz}
+      due_at: {type: timestamptz}
+      status: {type: enum, enum: TaskStatus}
+      resolved_at: {type: timestamptz, nullable: true}
+      condition_cleared_at: {type: timestamptz, nullable: true}
+      resolution_note: {type: string, nullable: true}
+    constraints: ['dedupe_key={namespaced_rule_id}:{subject_type}:{subject_id}:{cycle_id}', 제목은 고정 문구로 식별정보 금지]
+  AuditEvent:
+    table: audit_events
+    layer: kernel
+    fhir: AuditEvent
+    immutable: true
+    fields:
+      actor_type: {type: enum, enum: ActorType}
+      actor_id: {type: uuid, references: Staff, nullable: true}
+      at: {type: timestamptz}
+      entity_type: {type: string}
+      entity_id: {type: uuid}
+      action: {type: string}
+      before: {type: jsonb, nullable: true}
+      after: {type: jsonb, nullable: true}
+      reason_code: {type: string, nullable: true}
+      reason: {type: string, nullable: true}
+      correlation_id: {type: uuid}
+    constraints: [상태·기한·분류·UUID 허용목록만 기록, 이름·차트번호·생년월일·비밀번호·원문 저장 금지]
+  AccessLogSegment:
+    table: access_log_segments
+    layer: kernel
+    fhir: null
+    immutable: true
+    fields:
+      period_start: {type: timestamptz, unique: true}
+      period_end: {type: timestamptz}
+      opening_checkpoint: {type: string}
+      previous_segment_hash: {type: string, nullable: true}
+  AccessLog:
+    table: access_logs
+    layer: kernel
+    fhir: AuditEvent
+    immutable: true
+    fields:
+      segment_id: {type: uuid, references: AccessLogSegment}
+      sequence_no: {type: bigint, unique: true}
+      actor_type: {type: enum, enum: ActorType}
+      actor_id: {type: uuid, references: Staff, nullable: true}
+      actor_label: {type: string}
+      at: {type: timestamptz}
+      client_ip: {type: inet}
+      patient_ref: {type: uuid, nullable: true}
+      action: {type: enum, enum: AccessAction}
+      target_type: {type: string}
+      target_id: {type: uuid, nullable: true}
+      outcome_code: {type: string}
+      correlation_id: {type: uuid}
+      prev_hash: {type: string}
+      hash: {type: string}
+    constraints: [patient_ref는 보유기간 독립인 논리 참조이며 삭제 cascade 금지, EXPORT는 예약 값이며 기능 없음]
+  AccessLogReview:
+    table: access_log_reviews
+    layer: kernel
+    fhir: null
+    immutable: true
+    fields:
+      reviewer_id: {type: uuid, references: Staff}
+      reviewed_at: {type: timestamptz}
+      period_start: {type: timestamptz}
+      period_end: {type: timestamptz}
+      filters: {type: jsonb}
+      last_sequence: {type: bigint}
+      last_hash: {type: string}
+      disposition: {type: enum, enum: ReviewDisposition}
+      followup_note: {type: string, nullable: true}
+  PermissionHistory:
+    table: permission_history
+    layer: kernel
+    fhir: null
+    immutable: true
+    fields:
+      staff_id: {type: uuid, references: Staff}
+      changed_by: {type: uuid, references: Staff}
+      at: {type: timestamptz}
+      before_roles: {type: jsonb}
+      after_roles: {type: jsonb}
+      before_active: {type: boolean}
+      after_active: {type: boolean}
+      reason: {type: string}
+    constraints: [복수 역할 전체 집합의 전후 비교, 최소 3년 보유]
+  PurgeBatch:
+    table: purge_batches
+    layer: kernel
+    fhir: null
+    fields:
+      requested_by: {type: uuid, references: Staff}
+      approved_by: {type: uuid, references: Staff, nullable: true}
+      approved_at: {type: timestamptz, nullable: true}
+      completed_at: {type: timestamptz, nullable: true}
+      status: {type: enum, enum: PurgeStatus}
+      policy_version: {type: string}
+      manifest_hash: {type: string}
+      error_code: {type: string, nullable: true}
+  PurgeItem:
+    table: purge_items
+    layer: kernel
+    fhir: null
+    fields:
+      batch_id: {type: uuid, references: PurgeBatch}
+      subject_type: {type: string}
+      subject_id: {type: uuid}
+      eligibility_snapshot_hash: {type: string}
+      deleted_at: {type: timestamptz, nullable: true}
+    constraints: [복원 재파기용 최소 UUID 목록의 보유·파기 정책은 Q06 승인 필요]
+  ImportBatch:
+    table: import_batches
+    layer: kernel
+    fhir: null
+    fields:
+      committed_by: {type: uuid, references: Staff}
+      mapping_version: {type: string}
+      normalized_digest: {type: string, unique: true}
+      status: {type: enum, enum: ImportStatus}
+      accepted_count: {type: integer}
+      rejected_count: {type: integer}
+    constraints: [원본파일·파일명·무시컬럼·원본해시 저장 금지, 허용 필드 정규화 후 해시]
+  EndoscopyProcedure:
+    table: endoscopy_procedures
+    layer: endoscopy_pathology
+    fhir: Procedure
+    fields:
+      patient_id: {type: uuid, references: Patient}
+      performed_at: {type: timestamptz}
+      type: {type: enum, enum: ProcedureType}
+      sedation: {type: boolean}
+      performer_id: {type: uuid, references: Staff}
+  ExternalLab:
+    table: external_labs
+    layer: endoscopy_pathology
+    fhir: Organization
+    fields:
+      name: {type: string, unique: true}
+      active: {type: boolean}
+  PathologyRequest:
+    table: pathology_requests
+    layer: endoscopy_pathology
+    fhir: ServiceRequest
+    fields:
+      procedure_id: {type: uuid, references: EndoscopyProcedure, unique: true}
+      external_lab_id: {type: uuid, references: ExternalLab}
+      shipped_at: {type: timestamptz, nullable: true}
+      external_ref: {type: string, nullable: true}
+      status: {type: enum, enum: RequestStatus, write_via: WorkflowEngine}
+      active_cycle_id: {type: uuid, references: WorkCycle}
+      current_review_id: {type: uuid, references: PhysicianReview, nullable: true}
+      version_no: {type: integer}
+      result_complete_at: {type: timestamptz, nullable: true}
+      notified_at: {type: timestamptz, nullable: true}
+      notification_skip_reason: {type: string, nullable: true}
+      notification_waived_at: {type: timestamptz, nullable: true}
+      closed_at: {type: timestamptz, nullable: true}
+      terminal_at: {type: timestamptz, nullable: true}
+    unique: [[external_lab_id, external_ref]]
+    constraints: [id는 SubjectReference의 공유 PK, 처음부터 WorkCycle 동시 생성, terminal_at은 CANCELLED 또는 LOST 시각]
+  Specimen:
+    table: specimens
+    layer: endoscopy_pathology
+    fhir: Specimen
+    fields:
+      procedure_id: {type: uuid, references: EndoscopyProcedure}
+      request_id: {type: uuid, references: PathologyRequest}
+      seq_no: {type: integer}
+      site: {type: string}
+      method: {type: enum, enum: SpecimenMethod}
+      collected_at: {type: timestamptz}
+    unique: [[request_id, seq_no]]
+    constraints: [동일 procedure 일치, 발송 후 검체 수 변경은 정정 사유 필요, site는 해부학 부위만]
+  PathologyReport:
+    table: pathology_reports
+    layer: endoscopy_pathology
+    fhir: DiagnosticReport
+    immutable: true
+    fields:
+      request_id: {type: uuid, references: PathologyRequest}
+      received_at: {type: timestamptz}
+      report_ref: {type: string}
+      logical_report_key: {type: string}
+      version_no: {type: integer}
+      supersedes_id: {type: uuid, references: PathologyReport, nullable: true}
+      source: {type: enum, enum: ReportSource}
+      correction_reason: {type: string, nullable: true}
+    unique: [[request_id, logical_report_key, version_no]]
+    constraints: [결과 원문·소견·첨부파일 없음, 정정 버전은 이전 버전 전체 coverage를 명시적으로 대체]
+  ReportSpecimen:
+    table: report_specimens
+    layer: endoscopy_pathology
+    fhir: DiagnosticReport.specimen
+    immutable: true
+    fields:
+      report_id: {type: uuid, references: PathologyReport}
+      specimen_id: {type: uuid, references: Specimen}
+    unique: [[report_id, specimen_id]]
+    constraints: [동일 의뢰 내 검체만, 보고서 한 버전은 검체 한 개 이상 포함]
+  PhysicianReview:
+    table: physician_reviews
+    layer: endoscopy_pathology
+    fhir: null
+    immutable: true
+    fields:
+      request_id: {type: uuid, references: PathologyRequest}
+      cycle_id: {type: uuid, references: WorkCycle, unique: true}
+      report_set_hash: {type: string}
+      ordered_by: {type: uuid, references: Staff}
+      entered_by: {type: uuid, references: Staff}
+      reviewed_at: {type: timestamptz}
+      result_category: {type: enum, enum: ResultCategory}
+      urgency: {type: enum, enum: Urgency}
+      instruction: {type: enum, enum: Instruction}
+      instruction_note: {type: string, max_length: 200, nullable: true}
+      followup_directive: {type: enum, enum: FollowUpDirective}
+      followup_kind: {type: string, registry: followup_kinds, nullable: true}
+      followup_due_date: {type: date, nullable: true}
+      no_followup_reason: {type: string, nullable: true}
+    constraints: [ordered_by는 active DOCTOR, entered_by는 실제 actor, REQUIRED이면 kind·날짜 필수, NOT_REQUIRED이면 불필요 사유 필수]
+  ReviewReport:
+    table: review_reports
+    layer: endoscopy_pathology
+    fhir: null
+    immutable: true
+    fields:
+      review_id: {type: uuid, references: PhysicianReview}
+      report_id: {type: uuid, references: PathologyReport}
+    unique: [[review_id, report_id]]
+    constraints: [확인 당시 유효한 보고서 버전 집합을 고정]
+relations:
+  undergoes: {from: Patient, to: EndoscopyProcedure, cardinality: '1:N', via: patient_id}
+  performedBy: {from: EndoscopyProcedure, to: Staff, cardinality: 'N:1', via: performer_id}
+  hasRequest: {from: EndoscopyProcedure, to: PathologyRequest, cardinality: '1:0..1', via: procedure_id}
+  hasSpecimen: {from: PathologyRequest, to: Specimen, cardinality: '1:N', via: request_id}
+  collectedDuring: {from: Specimen, to: EndoscopyProcedure, cardinality: 'N:1', via: procedure_id}
+  sentTo: {from: PathologyRequest, to: ExternalLab, cardinality: 'N:1', via: external_lab_id}
+  resultOf: {from: PathologyReport, to: PathologyRequest, cardinality: 'N:1', via: request_id}
+  coversSpecimen: {from: PathologyReport, to: Specimen, cardinality: 'N:M', through: ReportSpecimen}
+  supersedes: {from: PathologyReport, to: PathologyReport, cardinality: '0..1:1', via: supersedes_id}
+  reviewsReports: {from: PhysicianReview, to: PathologyReport, cardinality: 'N:M', through: ReviewReport}
+  reviewsRequest: {from: PhysicianReview, to: PathologyRequest, cardinality: 'N:1', via: request_id}
+  reviewedBy: {from: PhysicianReview, to: Staff, cardinality: 'N:1', via: ordered_by}
+  usesCurrentReview: {from: PathologyRequest, to: PhysicianReview, cardinality: 'N:0..1', via: current_review_id}
+  enteredBy: {from: PhysicianReview, to: Staff, cardinality: 'N:1', via: entered_by}
+  hasRole: {from: Staff, to: StaffRole, cardinality: '1:N', via: staff_id}
+  identifiesSubject: {from: SubjectReference, to: Patient, cardinality: 'N:1', via: patient_id}
+  hasCycle: {from: SubjectReference, to: WorkCycle, cardinality: '1:N', composite: [subject_type, subject_id]}
+  createsTask: {from: Rule, to: Task, cardinality: '1:N', via: rule_id}
+  evaluatesRule: {from: RuleRun, to: Rule, cardinality: 'N:1', via: rule_id}
+  concernsSubject: {from: Task, to: SubjectReference, cardinality: 'N:1', composite: [subject_type, subject_id]}
+  belongsToCycle: {from: Task, to: WorkCycle, cardinality: 'N:1', via: cycle_id}
+  notifiesAbout: {from: PatientNotification, to: SubjectReference, cardinality: 'N:1', composite: [subject_type, subject_id]}
+  followsFrom: {from: FollowUpPlan, to: SubjectReference, cardinality: 'N:1', composite: [subject_type, subject_id]}
+  plansFor: {from: FollowUpPlan, to: Patient, cardinality: 'N:1', via: patient_id}
+  usesKind: {from: FollowUpPlan, to: FollowUpKind, cardinality: 'N:1', via: kind, target_key: code}
+  belongsToSegment: {from: AccessLog, to: AccessLogSegment, cardinality: 'N:1', via: segment_id}
+  changesPermissionOf: {from: PermissionHistory, to: Staff, cardinality: 'N:1', via: staff_id}
+  includesPurge: {from: PurgeBatch, to: PurgeItem, cardinality: '1:N', via: batch_id}
+integrity:
+  shared_subject_pk_classes: [PathologyRequest, FollowUpPlan]
+  polymorphic_fk_classes: [WorkCycle, Task, PatientNotification, FollowUpPlan]
+  composite_subject_fk: {local: [subject_type, subject_id], remote_class: SubjectReference, remote: [subject_type, id]}
+  cycle_subject_consistency: Task·PatientNotification의 subject는 WorkCycle과 일치
+  one_active_cycle: subject_type·subject_id별 ended_at이 null인 WorkCycle은 최대 1개
+  patient_consistency: FollowUpPlan.patient_id와 source의 patient_id 일치
+  report_consistency: ReportSpecimen·ReviewReport는 동일 의뢰 행만 연결
+  timestamps_on_all_tables: true
+  initial_status_insert: DRAFT 외 상태의 INSERT 금지
+  report_versioning: supersedes는 동일 의뢰·동일 logical_report_key의 직전 version_no이며 분기 금지
+  correction_transaction: 새 버전·새 회차·이전 Task 해소·F/U 재확인 표시·Audit를 원자적으로 저장
+workflow:
+  entity: PathologyRequest
+  initial: DRAFT
+  states: [DRAFT, SHIPPED, RESULT_RECEIVED, REVIEWED, NOTIFIED, CLOSED, CANCELLED, LOST]
+  direct_status_assignment: forbidden
+  transitions:
+    - {from: DRAFT, to: SHIPPED, action: ship, permissions: [request.ship], reason_required: false, guard: shipment_ready}
+    - {from: SHIPPED, to: SHIPPED, action: receive_partial, permissions: [report.receive], reason_required: false, guard: coverage_incomplete}
+    - {from: SHIPPED, to: RESULT_RECEIVED, action: receive_complete, permissions: [report.receive], reason_required: false, guard: coverage_complete}
+    - {from: RESULT_RECEIVED, to: REVIEWED, action: review, permissions: [review.record], reason_required: false, guard: current_report_set_reviewed}
+    - {from: REVIEWED, to: REVIEWED, action: record_failed_attempt, permissions: [notification.record], reason_required: false, guard: failed_notification}
+    - {from: REVIEWED, to: NOTIFIED, action: notify_reached, permissions: [notification.record], reason_required: false, guard: reached_current_cycle}
+    - {from: REVIEWED, to: REVIEWED, action: waive_notification, permissions: [notification.waive], reason_required: true, guard: instruction_none_and_doctor_authorized}
+    - {from: REVIEWED, to: CLOSED, action: close_skip_notification, permissions: [request.close], reason_required: true, guard: instruction_none_and_followup_satisfied}
+    - {from: NOTIFIED, to: CLOSED, action: close, permissions: [request.close], reason_required: false, guard: followup_satisfied}
+    - {from: DRAFT, to: CANCELLED, action: cancel_draft, permissions: [request.cancel], reason_required: true, guard: cancellable_draft}
+    - {from: SHIPPED, to: CANCELLED, action: cancel_shipped, permissions: [request.cancel], reason_required: true, guard: doctor_authorized_terminal}
+    - {from: SHIPPED, to: LOST, action: mark_lost, permissions: [request.mark_lost], reason_required: true, guard: doctor_authorized_terminal}
+    - {from: SHIPPED, to: DRAFT, action: correction_unship, permissions: [request.correct], reason_required: true, guard: no_reports_and_not_actually_shipped}
+    - {from: RESULT_RECEIVED, to: SHIPPED, action: correction_coverage, permissions: [request.correct], reason_required: true, guard: explicit_invalid_coverage}
+    - {from: REVIEWED, to: RESULT_RECEIVED, action: correction_review, permissions: [request.correct], reason_required: true, guard: doctor_authorized_correction}
+    - {from: NOTIFIED, to: REVIEWED, action: correction_notification, permissions: [request.correct], reason_required: true, guard: doctor_authorized_correction}
+    - {from: CLOSED, to: NOTIFIED, action: correction_closure, permissions: [request.correct], reason_required: true, guard: doctor_authorized_correction}
+    - {from: SHIPPED, to: SHIPPED, action: correction_report_partial, permissions: [report.correct], reason_required: true, guard: replacement_coverage_incomplete}
+    - {from: RESULT_RECEIVED, to: RESULT_RECEIVED, action: correction_report_waiting, permissions: [report.correct], reason_required: true, guard: replacement_coverage_complete}
+    - {from: REVIEWED, to: RESULT_RECEIVED, action: correction_report_reviewed, permissions: [report.correct], reason_required: true, guard: replacement_coverage_complete}
+    - {from: NOTIFIED, to: RESULT_RECEIVED, action: correction_report_notified, permissions: [report.correct], reason_required: true, guard: replacement_coverage_complete}
+    - {from: CLOSED, to: RESULT_RECEIVED, action: correction_report_closed, permissions: [report.correct], reason_required: true, guard: replacement_coverage_complete}
+    - {from: CANCELLED, to: DRAFT, action: correction_cancelled, permissions: [request.correct], reason_required: true, guard: never_shipped_and_doctor_authorized}
+    - {from: LOST, to: SHIPPED, action: correction_lost, permissions: [request.correct], reason_required: true, guard: original_specimens_located_and_doctor_authorized}
+  guards:
+    shipment_ready: 검체 1병 이상·채취시각·시행의·유효 수탁기관·발송시각이 있고 모든 검체가 동일 시행·의뢰에 속함
+    coverage_incomplete: 유효 보고서와 검체 coverage를 저장해도 전체 발송 검체를 포함하지 못함
+    coverage_complete: 보고서 계열별 최신 버전의 coverage 합집합이 전체 발송 검체를 포함함
+    current_report_set_reviewed: 최신 전체 보고서 집합 hash가 일치하고 active DOCTOR 지시·실제 입력자·F/U 필요성·날짜·분류가 모두 있음
+    failed_notification: 현 회차의 유효 원장 지시에 대한 실패 outcome이며 attempt_no가 미사용 값임
+    reached_current_cycle: 현 회차 REACHED 기록이며 현재 원장 지시에 대한 안내임
+    instruction_none_and_doctor_authorized: 현재 원장 확인의 instruction이 NONE이며 원장 지시·생략 사유·생략시각이 있음
+    instruction_none_and_followup_satisfied: NONE 생략 사유·시각·원장 지시가 있고 followup_satisfied를 충족함
+    followup_satisfied: 유효한 현재 원장 확인과 REQUIRED의 대응 CURRENT PLANNED/BOOKED/DONE 계획 또는 NOT_REQUIRED의 원장 불필요 사유가 있음
+    cancellable_draft: DRAFT이고 사유가 있으며 관련 후속 업무를 숨기지 않음
+    doctor_authorized_terminal: 원장 지시·사유를 기록하고 기수신 결과·남은 F/U·재채취 필요성을 사람이 확인함
+    no_reports_and_not_actually_shipped: 보고서가 없고 실제 발송하지 않은 오입력임을 원장이 확인함
+    explicit_invalid_coverage: 잘못된 coverage를 버전 이력으로 정정해 전체 미완료가 되었으며 원장 지시·사유가 있음
+    doctor_authorized_correction: active DOCTOR 지시·정정 사유가 있으며 유지·무효화할 근거를 명시함
+    replacement_coverage_incomplete: 동일 계열의 직전 버전을 대체해도 전체 미완료이며 새 회차와 재확인 표시를 저장함
+    replacement_coverage_complete: 동일 계열의 직전 버전을 대체해도 전체 검체 coverage가 유지되고 새 회차·확인 무효화·F/U 재확인을 저장함
+    never_shipped_and_doctor_authorized: CANCELLED이나 실제 발송 이력이 없고 원장이 취소 오류를 확인함. 발송된 취소 건 재개는 별도 중단·확인
+    original_specimens_located_and_doctor_authorized: LOST의 원래 검체를 찾았고 원장이 재개 승인함. 재채취는 새 시행·새 의뢰
+  correction_effects:
+    all_corrections: 새 WorkCycle·Audit 생성, 이전 OPEN Task는 CYCLE_SUPERSEDED로 해소하고 과거 이력 보존
+    report_corrections: current_review_id·notified_at·생략시각·closed_at 무효화, 이전 F/U는 RECONFIRM_REQUIRED
+    correction_review: current_review_id 및 이후 안내·종결 근거 무효화
+    correction_notification: report_set_hash가 같은 유효 review만 유지하고 안내 이후 근거 무효화
+    correction_closure: 동일 보고서 집합의 유효 review·안내 근거를 명시적으로 유지하고 closed_at만 해제

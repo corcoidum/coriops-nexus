@@ -1,0 +1,17 @@
+status: DESIGN_ASSUMPTIONS
+timezone: Asia/Seoul
+country: KR
+include_substitute_holidays: true
+# [가정] 실제 진료시간은 설치 전 확인한다. 반일도 한 진료일이다.
+closing_times:
+  monday: '18:00'
+  tuesday: '18:00'
+  wednesday: '13:00'
+  thursday: '18:00'
+  friday: '18:00'
+  saturday: '13:00'
+  sunday: null
+temporary_closures: ['2026-11-25']
+temporary_closures_are_synthetic: true
+business_day_due_policy: exclude_anchor_date_use_target_closing_time
+urgent_due_policy: same_day_closing_or_immediate_if_after_closing

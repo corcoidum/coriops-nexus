@@ -1,0 +1,63 @@
+status: DESIGN_USER_CONFIRMED_TRIGGER_SPLIT
+engine:
+  interval_minutes: 30
+  dedupe_template: '{rule_id}:{subject_type}:{subject_id}:{cycle_id}'
+  overdue_comparison: now_gt_due_at
+  dashboard_done_window_days: 7
+rules:
+  PATH.R01:
+    name: SPECIMEN_NOT_SHIPPED
+    trigger: collection_day_closing_reached
+    title: 검체 발송 확인
+    assignee_role: NURSE
+    priority: HIGH
+    params: {due: collection_day_closing}
+  PATH.R02:
+    name: RESULT_OVERDUE
+    trigger: shipped_plus_calendar_days_reached_and_coverage_incomplete
+    title: 병리결과 확인(수탁기관)
+    assignee_role: ADMIN
+    priority: NORMAL
+    params: {calendar_days: 7}
+  PATH.R03:
+    name: REVIEW_PENDING
+    trigger: complete_result_received
+    title: 원장 결과 확인 요청
+    assignee_role: DOCTOR
+    priority: NORMAL
+    params: {business_days: 1}
+  PATH.R04:
+    name: NOTIFY_PENDING
+    trigger: reviewed_call_or_next_visit
+    title: 환자 결과 안내
+    assignee_role: ADMIN
+    priority_by_urgency: {ROUTINE: NORMAL, PRIORITY: HIGH, URGENT: URGENT}
+    params: {business_days: 2, urgent_business_days: 0}
+  PATH.R05:
+    name: NOTIFY_FAILED_REPEATEDLY
+    trigger: failure_threshold_reached_in_current_cycle
+    title: 안내 방법 변경 검토
+    assignee_role: ADMIN
+    priority: HIGH
+    params: {failed_attempts: 3, failure_outcomes: [NO_ANSWER, WRONG_NUMBER, REFUSED]}
+  PATH.R06:
+    name: FOLLOWUP_MISSING
+    trigger: notified_or_notification_waived_and_followup_required
+    title: F/U 계획 등록
+    assignee_role: ADMIN
+    priority: NORMAL
+    params: {business_days: 2}
+  PATH.R07:
+    name: FOLLOWUP_DUE_UNBOOKED
+    trigger: planned_inside_due_window
+    title: 재검 예약 안내
+    assignee_role: ADMIN
+    priority: NORMAL
+    params: {calendar_days: 30}
+  PATH.R08:
+    name: FOLLOWUP_OVERDUE
+    trigger: due_date_passed_and_incomplete
+    title: 재검 기한 경과
+    assignee_role: ADMIN
+    priority: HIGH
+    params: {calendar_days: 0}

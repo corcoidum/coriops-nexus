@@ -1,0 +1,24 @@
+# 환자자료·업로드·백업·비밀정보는 버전 관리에서 제외한다.
+data/
+backups/
+*.dump
+*.age
+*.gpg
+*.xlsx
+*.xls
+*.csv
+*.tsv
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+caddy_data/
+caddy_config/
+.venv/
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store

@@ -1,0 +1,43 @@
+status: DESIGN_NOT_DEPLOYABLE
+authentication:
+  password_algorithm: argon2id
+  minimum_password_length: 10
+  failed_login_limit: 5
+  lockout_minutes: 30
+  idle_timeout_minutes: 15
+  cookies: {secure: true, httponly: true, samesite: Strict}
+  csrf: synchronizer_token_and_origin_check
+network:
+  # [가정] 운영 값 아님. 프록시 신뢰 대역과 PC 허용 대역은 별개다.
+  allowed_client_cidrs: ['192.168.0.0/24']
+  trusted_proxy_cidrs: []
+  deny_egress: true
+  allow_internal_database: true
+retention:
+  approval_status: REQUIRES_OWNER_AND_LEGAL_REVIEW
+  closed_business_years: 5
+  terminal_business_years_proposal: 5
+  access_log_minimum_years: 2
+  permission_history_minimum_years: 3
+  audit_business_years_proposal: 5
+  backup_maximum_days: 30
+  deletion_ledger_days_after_last_affected_backup_proposal: 30
+  live_data_enabled: false
+access_review:
+  interval: monthly
+  bulk_distinct_patients_threshold: 50
+  bulk_window_minutes: 10
+  status: ASSUMED_THRESHOLDS
+import_limits:
+  maximum_upload_bytes: 5242880
+  maximum_rows: 2000
+  maximum_expanded_bytes: 52428800
+  preview_ttl_minutes: 15
+  spool_to_disk: false
+  allow_macros: false
+  allow_formulas: false
+backup:
+  encryption_proposal: age_public_recipient
+  private_key_on_server: false
+  forbidden_path_components: [OneDrive, Google Drive, GoogleDrive, Dropbox, CloudStorage]
+  approved_local_directory_required: true
