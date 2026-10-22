@@ -1,10 +1,12 @@
 # Roadmap과 확장 계약
 
+2026-10-22 A09에 따라 약어 사전은 나중에 받고 합성 Excel 프로토타입부터 진행한다. [독립 소규모 구현·검증](excel-prototype.md)은 정식 앱 Phase 1 전체 완료·실데이터 전환과 구분하며, 아래 최초 Gate의 모든 구현이 끝났다는 의미가 아니다.
+
 ## Phase 0~5 Gate
 
 | Phase | 산출물 | 통과 증거 | 현재 |
 |---|---|---|---|
-| 0 | YAML·설계·충돌 보고·ADR·대응표·질문 | 문서 정합성, Q01/02/04/06/09/16 해소·사용자 승인 | 산출물 작성, 결정 대기 |
+| 0 | YAML·설계·충돌 보고·ADR·대응표·질문 | 문서 정합성, 기존 Gate 및 Q17/18·ADR-005 반영·사용자 승인 | 산출물 작성, 씨젠 일일 조회·Excel 갱신 범위 재검토 |
 | 1 | kernel/module 모델·Alembic·DB role SQL·문서 생성기·합성 seed | PostgreSQL up/down/up, C1~C3, 테스트 환자 30/시행 40/의뢰 25·모든 상태 | 미착수 |
 | 2 | WorkflowEngine·서비스·Audit·AccessLog, 테스트 먼저 | 전 전이 허용/금지·status 우회 차단·해시 조작·조회 기록 | 미착수 |
 | 3 | Calendar·Rule registry/Engine·R01~08, 테스트 먼저 | 발생/미발생/해소·반복/경합·Clock E2E | 미착수 |
