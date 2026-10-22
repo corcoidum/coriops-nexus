@@ -1,0 +1,10 @@
+FROM python:3.12-slim
+WORKDIR /workspace
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+COPY pyproject.toml README.md ./
+COPY app ./app
+COPY config ./config
+RUN pip install --no-cache-dir '.[test]'
+COPY tests ./tests
+COPY docker-compose.prototype.yml ./
+CMD ["python", "-m", "pytest", "-q"]

@@ -1,6 +1,7 @@
 # 환자자료·업로드·백업·비밀정보는 버전 관리에서 제외한다.
 data/
 backups/
+outputs/
 *.dump
 *.age
 *.gpg

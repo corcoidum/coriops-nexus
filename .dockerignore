@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+data
+backups
+outputs
+*.xlsx
+*.dump
+*.age
+*.gpg
+.venv
+**/__pycache__
+.pytest_cache

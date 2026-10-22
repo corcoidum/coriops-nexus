@@ -1,0 +1,26 @@
+version: '0.1-prototype'
+status: SYNTHETIC_ONLY
+provider_url: https://srms.seegenemedical.com/main.do
+sheet_name: 조직검체장부
+freeze_panes: E2
+review_label: 검토 필요
+# 번호의 의미와 행 단위는 합성 예시의 가정이며 실운영 매칭으로 확정하지 않는다.
+key_fields: [report_ref, chart_no]
+columns:
+  - {header: 검사일, field: exam_date, kind: date, width: 13}
+  - {header: 접수번호, field: report_ref, kind: text, width: 17}
+  - {header: 차트번호, field: chart_no, kind: text, width: 13}
+  - {header: 수진자명, field: patient_name, kind: text, width: 18}
+  - {header: 나이, field: age, kind: text, width: 9}
+  - {header: 성별, field: sex, kind: text, width: 12}
+  - {header: 위탁일, field: entrusted_date, kind: date, width: 13}
+  - {header: 접수인, kind: manual, width: 13}
+  - {header: 검사종류, field: exam_kind, kind: text, width: 17}
+  - {header: 검사위치, kind: abbreviation_pending, width: 17}
+  - {header: 검체수량, field: specimen_count, kind: integer, width: 12}
+  - {header: 인계인, kind: manual, width: 13}
+  - {header: 인수인, kind: manual, width: 13}
+  - {header: 결과보고일, field: report_date, kind: date, width: 14}
+  - {header: 조직검사결과, kind: abbreviation_pending, width: 21}
+  - {header: 특이소견, kind: manual, width: 24}
+  - {header: 비고란, kind: manual, width: 30}

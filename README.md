@@ -2,9 +2,21 @@
 
 내시경 검체 채취 → 수탁 의뢰 → 결과 수신 → 원장 확인 → 환자 안내 → F/U 등록을 관리할 원내 LAN 전용 보조 업무대장이다. 진단·치료·F/U 주기는 원장이 결정한다. 결과 원문, 연락처, 주소, 주민등록번호, 보험정보는 저장하지 않는다.
 
-**현재: Phase 0 설계 산출물 작성 완료 / 검토 대기. 실행 가능한 앱은 없다.** Phase 1 이후 코드, DB, 배포 설정은 만들지 않았다. 실제 LAN 배포·실데이터 사용은 수행하지 않았다.
+**지금은 수동 입력으로 첫 화면을 확인한다.** 씨젠은 직접 확인하고 기존 Excel 장부는 평소대로 관리한다. 자동 로그인·약어 자동 변환은 뒤로 미룬다. 약어 사전 없이 합성 자료 8건으로 결과 입력 → 원장 지시 기록 → 환자 안내 흐름을 눌러볼 수 있다.
+
+```sh
+docker compose -f docker-compose.prototype.yml --profile dashboard up -d --build dashboard
+```
+
+브라우저: <http://127.0.0.1:8765/dashboard> · [수동 대시보드 사용법](docs/manual-dashboard.md)
+
+**합성 시연 전용이며 재시작하면 입력이 초기화된다.** 실제 자료 입력·인증·영구 DB 저장·접속/감사기록·LAN 운영은 정식 앱에서 구현할 후속 범위다. 아래는 최초 Phase 0 설계 기록이며 오늘 시연을 위해 모든 문서를 먼저 검토할 필요는 없다. [17열 Excel 프로토타입](docs/excel-prototype.md)도 유지한다.
 
 GitHub 저장소: [corcoidum/coriops-nexus](https://github.com/corcoidum/coriops-nexus). Phase 1은 확인 질문과 승인 후 시작한다.
+
+2026-10-22 업무 확인: 씨젠의 환자별 전체 결과 공개 후 사무장·지정 직원 1명이 확인하고 필요한 내용을 원장에게 보고한다. 전건 원장 확인을 전제했던 YAML·상태 머신·R03은 [Q17의 후속 처리 기준](docs/open-questions.md)을 확인한 뒤 수정할 이전 검토안이다.
+
+같은 날 제안한 씨젠 자동 조회·Excel 갱신 설계 [ADR-005](docs/decisions/ADR-005-seegene-excel-integration.md)는 보류한다. 환자별 다음 내시경 시점은 원장이 결정하며, 첫 화면에서는 사람이 그 날짜를 입력한다.
 
 ## 먼저 검토할 문서
 
@@ -38,7 +50,7 @@ Get-Content -Encoding UTF8 .\ontology\coriops.yaml
 docker version
 ```
 
-현재 `docker compose up`, `pytest`, `alembic` 명령은 실행할 프로젝트가 없다. 향후 실행·검증 명령과 선행조건은 [검증 계획](docs/verification-plan.md)에 명확히 구분했다.
+현재 실행은 `docker-compose.prototype.yml`을 사용한다. [첫 대시보드](docs/manual-dashboard.md) 또는 [Excel 프로토타입](docs/excel-prototype.md)을 시험·시연할 수 있으며, 정식 앱의 Alembic 마이그레이션은 아직 준비되지 않았다. 전체 검증 계획은 [검증 계획](docs/verification-plan.md)을 참고한다.
 
 ## 배포 전에 확인할 운영 절차 — 아직 실행하지 않음
 
