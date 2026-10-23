@@ -32,9 +32,14 @@ Csrf = Depends(check_csrf)
 ReturnStage = Annotated[str, Form(alias="stage")]
 
 
-def case_redirect(case_id: UUID, stage: str = "ALL") -> RedirectResponse:
-    query = {"stage": stage} if stage in STAGE_LABELS else {}
-    query["selected_id"] = str(case_id)
+def case_redirect(service: ManualDashboardService, case_id: UUID, stage: str = "ALL") -> RedirectResponse:
+    if stage not in STAGE_LABELS:
+        query = {"selected_id": str(case_id)}
+    elif service.stage_of(case_id) == stage:
+        query = {"stage": stage, "selected_id": str(case_id)}
+    else:
+        # 다음 단계로 넘어간 항목은 보던 분류의 목록·상세와 어긋나므로 선택하지 않는다.
+        query = {"stage": stage}
     return RedirectResponse(f"/dashboard?{urlencode(query)}", status_code=303)
 
 
@@ -58,7 +63,7 @@ def receive(case_id: UUID, service: Service,
             site_summary: Annotated[str, Form()] = "",
             return_stage: ReturnStage = "ALL"):
     service.receive(case_id, result_summary, site_summary)
-    return case_redirect(case_id, return_stage)
+    return case_redirect(service, case_id, return_stage)
 
 
 @router.post("/demo/cases/{case_id}/decide", dependencies=[Csrf])
@@ -73,14 +78,14 @@ def decide(case_id: UUID, service: Service, mode: Annotated[str, Form()] = "",
     except ValueError:
         raise DashboardError("날짜 형식을 확인해 주세요.", 422) from None
     service.decide(case_id, mode, parsed_date, reason)
-    return case_redirect(case_id, return_stage)
+    return case_redirect(service, case_id, return_stage)
 
 
 @router.post("/demo/cases/{case_id}/notify", dependencies=[Csrf])
 def notify(case_id: UUID, service: Service, outcome: Annotated[str, Form()] = "",
            return_stage: ReturnStage = "ALL"):
     service.notify(case_id, outcome)
-    return case_redirect(case_id, return_stage)
+    return case_redirect(service, case_id, return_stage)
 
 
 @router.post("/demo/reset", dependencies=[Csrf])

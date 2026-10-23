@@ -232,16 +232,29 @@ def test_due_date_of_today_is_accepted(client, app):
     [
         ("RESULT_PENDING", "receive", {"result_summary": "합성", "site_summary": "합성"}),
         ("DOCTOR_PENDING", "decide", {"mode": "required", "due_date": "2030-01-15"}),
-        ("NOTIFY_PENDING", "notify", {"outcome": "no_answer"}),
+        ("NOTIFY_PENDING", "notify", {"outcome": "reached"}),
     ],
 )
-def test_actions_return_to_the_stage_filter_in_use(client, app, stage, action, data):
+def test_case_that_left_the_filter_is_not_selected_on_return(client, app, stage, action, data):
     case_id = case_in_stage(app, stage).id
 
     response = post_case(client, app, case_id, action, stage=stage, **data)
 
     assert response.status_code == 303
-    assert response.headers["location"] == f"/dashboard?stage={stage}&selected_id={case_id}"
+    assert response.headers["location"] == f"/dashboard?stage={stage}"
+    page = snapshot(app, stage=stage)
+    assert all(case.stage == stage for case in page["cases"])
+    assert page["selected"] is None or page["selected"].stage == stage
+    assert client.get(response.headers["location"]).status_code == 200
+
+
+def test_case_still_in_the_filter_stays_selected_on_return(client, app):
+    case_id = case_in_stage(app, "NOTIFY_PENDING").id
+
+    response = post_case(client, app, case_id, "notify", stage="NOTIFY_PENDING", outcome="no_answer")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/dashboard?stage=NOTIFY_PENDING&selected_id={case_id}"
     assert client.get(response.headers["location"]).status_code == 200
 
 

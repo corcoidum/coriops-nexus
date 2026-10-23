@@ -108,6 +108,10 @@ class ManualDashboardService:
                 "total": len(all_cases),
             }
 
+    def stage_of(self, case_id: UUID) -> str:
+        with self._lock:
+            return self._get(case_id).stage
+
     @staticmethod
     def _text(value: str, label: str, maximum: int) -> str:
         clean = value.strip()
