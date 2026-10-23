@@ -46,7 +46,7 @@
           {% if selected.stage == 'RESULT_PENDING' %}
           <p class="form-intro">씨젠에 전체 결과가 공개되면, 평소 장부에 쓰던 표현으로 입력합니다.</p>
           <form action="/demo/cases/{{ selected.id }}/receive" method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="stage" value="{{ stage }}">
             <label for="result_summary">조직검사결과 <span class="required">필수</span></label><input id="result_summary" name="result_summary" maxlength="120" required placeholder="예: 합성 결과 요약" autocomplete="off"><p class="field-help">약어를 미리 등록할 필요가 없습니다.</p>
             <label for="site_summary">검사위치 <span class="required">필수</span></label><input id="site_summary" name="site_summary" maxlength="80" required placeholder="예: 합성 검사위치" autocomplete="off">
             <button class="button primary full" type="submit">결과 입력 완료 <span aria-hidden="true">→</span></button>
@@ -56,7 +56,7 @@
           {% if selected.stage == 'DOCTOR_PENDING' %}
           <p class="form-intro">원장이 정한 재검 시점을 그대로 기록합니다.</p>
           <form action="/demo/cases/{{ selected.id }}/decide" method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="stage" value="{{ stage }}">
             <label for="mode">원장 지시</label><select id="mode" name="mode"><option value="required">재검 날짜 지정</option><option value="not_required">재검 불필요</option></select>
             <label for="due_date">지정한 재검 날짜</label><input type="date" id="due_date" name="due_date"><p class="field-help">권장 날짜는 자동으로 채우지 않습니다.</p>
             <label for="reason">재검 불필요 사유</label><input id="reason" name="reason" maxlength="120" placeholder="불필요를 선택한 경우 입력" autocomplete="off">
@@ -67,7 +67,7 @@
           {% if selected.stage == 'NOTIFY_PENDING' %}
           <p class="form-intro">원장 지시에 따라 안내한 뒤 결과를 기록합니다. 부재이면 안내 대기에 남습니다.</p>
           <div class="attempts">지금까지 연락 시도 <strong>{{ selected.contact_attempts }}회</strong></div>
-          <form action="/demo/cases/{{ selected.id }}/notify" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button primary full" name="outcome" value="reached" type="submit">✓ 안내 완료</button><button class="button secondary full" name="outcome" value="no_answer" type="submit">부재 기록</button></form>
+          <form action="/demo/cases/{{ selected.id }}/notify" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="stage" value="{{ stage }}"><button class="button primary full" name="outcome" value="reached" type="submit">✓ 안내 완료</button><button class="button secondary full" name="outcome" value="no_answer" type="submit">부재 기록</button></form>
           {% else %}<div class="complete-note"><strong>✓ 안내를 기록했습니다.</strong><p>다른 행을 선택해 남은 업무를 확인하세요.</p></div>{% endif %}
           {% endif %}{% endif %}
         </div>

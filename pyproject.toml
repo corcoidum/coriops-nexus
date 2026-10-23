@@ -16,7 +16,7 @@ dependencies = [
 test = ["pytest==8.4.2", "psycopg[binary]==3.2.10", "httpx==0.28.1"]
 
 [tool.setuptools.package-data]
-app = ["web/templates/*.html", "web/static/*.css"]
+app = ["web/templates/*.html", "web/static/*.css", "modules/endoscopy_pathology/*.yaml"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

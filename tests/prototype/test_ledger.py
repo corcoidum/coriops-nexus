@@ -265,6 +265,33 @@ def test_existing_duplicate_keys_fail_without_exposing_patient_values(
         assert private_value not in str(error.value)
 
 
+@pytest.mark.parametrize("header", ["접수번호", "차트번호"])
+@pytest.mark.parametrize("numeric_key", [5678, 5678.0])
+def test_numeric_existing_key_is_reported_as_not_text_without_mutation(
+    workbook, policy, header, numeric_key
+):
+    record = synthetic_record()
+    merge_records(workbook, [record], policy)
+    # 직원이 숫자 셀로 입력한 기존 장부를 흉내 낸다. 앞자리 0은 이미 사라진 상태다.
+    set_cell(workbook, 2, header, numeric_key)
+    before = snapshot(workbook)
+
+    with pytest.raises(ValueError, match="^EXISTING_ROW_KEY_NOT_TEXT$"):
+        merge_records(workbook, [record], policy)
+
+    assert snapshot(workbook) == before
+
+
+@pytest.mark.parametrize("missing", [None, "  "])
+def test_blank_existing_key_is_still_reported_as_missing(workbook, policy, missing):
+    merge_records(workbook, [synthetic_record()], policy)
+    # openpyxl의 cell(value=None)은 값을 지우지 않으므로 직접 대입한다.
+    workbook[SHEET_NAME].cell(row=2, column=HEADERS.index("차트번호") + 1).value = missing
+
+    with pytest.raises(ValueError, match="^EXISTING_ROW_KEY_MISSING$"):
+        merge_records(workbook, [synthetic_record()], policy)
+
+
 @pytest.mark.parametrize("header_column", [1, 10, 17])
 def test_changed_header_fails_before_mutating_the_workbook(
     workbook, policy, header_column
@@ -364,7 +391,8 @@ def test_save_never_overwrites_an_existing_file(workbook, tmp_path):
 
 
 @pytest.mark.parametrize("field", ["report_ref", "chart_no", "patient_name", "age", "exam_kind"])
-@pytest.mark.parametrize("bad_text", ["SYNTHETIC\x00", "X" * 32768])
+# 긴 값을 test id로 쓰면 PYTEST_CURRENT_TEST가 Windows 환경변수 한도를 넘는다.
+@pytest.mark.parametrize("bad_text", ["SYNTHETIC\x00", "X" * 32768], ids=["nul", "too-long"])
 def test_invalid_excel_text_rejects_entire_batch_before_any_write(workbook, policy, field, bad_text):
     first = synthetic_record()
     second = replace(synthetic_record(report_ref="TEST-SECOND", chart_no="00009999"), **{field: bad_text})
