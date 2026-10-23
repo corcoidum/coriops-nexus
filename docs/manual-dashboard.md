@@ -26,7 +26,7 @@ docker compose -f docker-compose.prototype.yml --profile dashboard stop dashboar
 
 - FastAPI 라우트는 `ManualDashboardService`만 호출한다. 기존 Ontology·PathologyRequest를 임의 변경하지 않는다.
 - UUID 합성 8건, 앱별 독립 메모리, 순서·필수값 검증, Jinja 자동 escape, CSRF 확인, 브라우저 캐시 금지를 적용한다.
-- Docker Desktop에서 `internal` network의 포트 게시가 되지 않아 시연 서버는 별도 bridge와 loopback 게시를 사용한다. `app.demo_server`가 Python audit hook으로 DNS 조회·발신 연결·UDP 전송 API를 거부한다. 이것은 이 합성 Python 시연의 발신 제한이며 정식 운영의 OS/네트워크 방화벽을 대신하지 않는다. PostgreSQL 시험은 기존 internal network를 유지한다.
+- Docker Desktop에서 `internal` network의 포트 게시가 되지 않아 시연 서버는 별도 bridge와 loopback 게시를 사용한다. `app.demo_server`가 Python audit hook으로 DNS 조회·발신 연결·UDP 전송 API를 거부한다. Windows asyncio가 내부 self-pipe를 loopback 연결로 만들기 때문에 IP 리터럴 loopback(`127.0.0.1`·`::1`) 연결만 허용한다. 이것은 이 합성 Python 시연의 발신 제한이며 정식 운영의 OS/네트워크 방화벽을 대신하지 않는다. PostgreSQL 시험은 기존 internal network를 유지한다.
 - 기존 지정 스택의 FastAPI·Jinja2에 서버 실행용 uvicorn, HTML form용 python-multipart를 추가했다. httpx는 ASGI 화면 테스트 전용이다.
 - 다음 작은 단계는 이 화면의 항목·순서를 확인한 후 필요한 최소 저장·개인 계정·기록 기능을 붙이는 것이다. 씨젠 자동화와 약어 자동 변환은 보류한다.
 

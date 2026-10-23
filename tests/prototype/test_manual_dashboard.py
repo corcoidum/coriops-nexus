@@ -199,6 +199,9 @@ def test_out_of_order_actions_are_rejected_without_changing_the_case(client, app
         {"mode": "required"},
         {"mode": "required", "due_date": "not-a-date"},
         {"mode": "required", "due_date": "2030-02-30"},
+        {"mode": "required", "due_date": "20300115"},
+        {"mode": "required", "due_date": "2030-W03-2"},
+        {"mode": "required", "due_date": "2000-01-15"},
         {"mode": "not_required"},
         {"mode": "not_required", "reason": "  "},
         {"mode": "automatic", "due_date": "2030-01-15"},
@@ -212,6 +215,53 @@ def test_invalid_decisions_are_rejected_without_changing_the_case(client, app, d
 
     assert response.status_code == 422
     assert case_state(app, case_id) == before
+
+
+def test_due_date_of_today_is_accepted(client, app):
+    case_id = case_in_stage(app, "DOCTOR_PENDING").id
+    today = snapshot(app)["today"]
+
+    response = post_case(client, app, case_id, "decide", mode="required", due_date=today.isoformat())
+
+    assert response.status_code == 303
+    assert current_case(app, case_id).followup_due == today
+
+
+@pytest.mark.parametrize(
+    ("stage", "action", "data"),
+    [
+        ("RESULT_PENDING", "receive", {"result_summary": "합성", "site_summary": "합성"}),
+        ("DOCTOR_PENDING", "decide", {"mode": "required", "due_date": "2030-01-15"}),
+        ("NOTIFY_PENDING", "notify", {"outcome": "no_answer"}),
+    ],
+)
+def test_actions_return_to_the_stage_filter_in_use(client, app, stage, action, data):
+    case_id = case_in_stage(app, stage).id
+
+    response = post_case(client, app, case_id, action, stage=stage, **data)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/dashboard?stage={stage}&selected_id={case_id}"
+    assert client.get(response.headers["location"]).status_code == 200
+
+
+@pytest.mark.parametrize("stage", ["ALL", "UNKNOWN", ""])
+def test_unknown_or_all_stage_returns_to_the_full_list(client, app, stage):
+    case_id = case_in_stage(app, "RESULT_PENDING").id
+
+    response = post_case(
+        client, app, case_id, "receive", stage=stage, result_summary="합성", site_summary="합성",
+    )
+
+    assert response.headers["location"] == f"/dashboard?selected_id={case_id}"
+
+
+def test_dashboard_forms_carry_the_current_stage(client, app):
+    case_id = case_in_stage(app, "RESULT_PENDING").id
+
+    page = client.get(f"/dashboard?stage=RESULT_PENDING&selected_id={case_id}")
+
+    assert '<input type="hidden" name="stage" value="RESULT_PENDING">' in page.text
 
 
 def test_invalid_notification_outcome_is_rejected(client, app):

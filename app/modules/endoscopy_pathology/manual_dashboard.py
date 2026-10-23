@@ -136,6 +136,9 @@ class ManualDashboardService:
             if mode == "required":
                 if due_date is None:
                     raise DashboardError("원장이 정한 재검 날짜를 입력해 주세요.", 422)
+                # 연도 오타 등으로 이미 지난 날짜가 지시로 남지 않게 한다. 날짜를 대신 정하지는 않는다.
+                if due_date < self._clock.now().astimezone(KST).date():
+                    raise DashboardError("재검 날짜가 오늘보다 이전입니다. 원장이 정한 날짜를 다시 확인해 주세요.", 422)
                 clean_reason = ""
             elif mode == "not_required":
                 clean_reason = self._text(reason, "재검 불필요 사유", 120)
