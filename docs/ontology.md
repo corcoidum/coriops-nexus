@@ -1,6 +1,6 @@
 # Ontology 데이터 사전
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `e5278a645eed4a36a56400d3dab24e5ad7f020ca01173a3b331e0bdc240a48d0`
+> 원천: `ontology/coriops.yaml` · SHA-256 `3219555deb849c8c405298597adbeacd79b3032992a172c5bc72bc5559ae6704`
 > Phase 0 일회성 로컬 생성 스냅샷. 영구 생성기·CI 일치 검사는 Phase 1 예정. 직접 편집하지 않는다.
 
 
@@ -426,12 +426,12 @@
 | 필드 | 타입 | NULL | 제약 |
 |---|---|---|---|
 | code | string | 금지 | unique=True |
-| label | string | 금지 | — |
-| scope | enum | 금지 | enum=ResultCodeScope |
-| severity_tier | enum | 금지 | enum=ResultSeverityTier |
+| label | string | 허용 | — |
+| scope | enum | 허용 | enum=ResultCodeScope |
+| severity_tier | enum | 허용 | enum=ResultSeverityTier |
 | active | boolean | 금지 | — |
 
-제약: config/result_codes.yaml에서 적재하며 화면 편집 없음 / severity_tier는 화면 정렬·강조 전용이며 임상 판단·F/U 필요성·기한 자동 결정에 사용 금지 / 코드 추가·tier 변경은 원장 승인 후 config 변경 절차
+제약: config/result_codes.yaml에서 적재하며 화면 편집 없음 / label·scope·severity_tier는 Q19 약어 사전 확정 전 null / severity_tier는 화면 정렬·강조 전용이며 임상 판단·F/U 필요성·기한 자동 결정에 사용 금지 / 코드 추가·tier 변경은 원장 승인 후 config 변경 절차
 
 ### ReportFinding
 

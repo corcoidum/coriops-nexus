@@ -393,11 +393,11 @@ classes:
     fhir: CodeSystem.concept
     fields:
       code: {type: string, unique: true}
-      label: {type: string}
-      scope: {type: enum, enum: ResultCodeScope}
-      severity_tier: {type: enum, enum: ResultSeverityTier}
+      label: {type: string, nullable: true}
+      scope: {type: enum, enum: ResultCodeScope, nullable: true}
+      severity_tier: {type: enum, enum: ResultSeverityTier, nullable: true}
       active: {type: boolean}
-    constraints: [config/result_codes.yaml에서 적재하며 화면 편집 없음, severity_tier는 화면 정렬·강조 전용이며 임상 판단·F/U 필요성·기한 자동 결정에 사용 금지, 코드 추가·tier 변경은 원장 승인 후 config 변경 절차]
+    constraints: [config/result_codes.yaml에서 적재하며 화면 편집 없음, label·scope·severity_tier는 Q19 약어 사전 확정 전 null, severity_tier는 화면 정렬·강조 전용이며 임상 판단·F/U 필요성·기한 자동 결정에 사용 금지, 코드 추가·tier 변경은 원장 승인 후 config 변경 절차]
   ReportFinding:
     table: report_findings
     layer: endoscopy_pathology

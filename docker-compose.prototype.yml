@@ -1,0 +1,60 @@
+name: coriops-nexus-prototype
+services:
+  postgres-test:
+    image: postgres:16.14-alpine
+    profiles: [test]
+    environment:
+      POSTGRES_DB: coriops_test
+      POSTGRES_USER: coriops_test
+      POSTGRES_PASSWORD: ${CORIOPS_TEST_DB_PASSWORD:-}
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [test-internal]
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.prototype
+    image: coriops-nexus-prototype:local
+    profiles: [test]
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres-test
+      PGPORT: '5432'
+      PGDATABASE: coriops_test
+      PGUSER: coriops_test
+      PGPASSWORD: ${CORIOPS_TEST_DB_PASSWORD:-}
+    networks: [test-internal]
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.prototype
+    image: coriops-nexus-prototype:local
+    profiles: [dashboard]
+    ports:
+      - '127.0.0.1:8765:8000'
+    networks: [dashboard-local]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [python, -m, app.demo_server]
+  demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.prototype
+    image: coriops-nexus-prototype:local
+    profiles: [demo]
+    network_mode: none
+    volumes:
+      - ./outputs:/outputs
+    command: [python, -m, app.modules.endoscopy_pathology.ledger_demo, --output, /outputs/01a15ebd-ee2d-7793-a059-7cf7132919ed/ledger-demo.xlsx]
+networks:
+  dashboard-local:
+  test-internal:
+    internal: true
