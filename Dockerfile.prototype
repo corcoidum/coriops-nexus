@@ -4,6 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY pyproject.toml README.md ./
 COPY app ./app
 COPY config ./config
+COPY ontology ./ontology
 RUN pip install --no-cache-dir '.[test]'
 COPY tests ./tests
 COPY docker-compose.prototype.yml ./

@@ -239,7 +239,7 @@ h1 {
 
 .stat-grid {
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(5,minmax(0,1fr));
   gap:15px;
   margin-bottom:26px;
 }
@@ -320,12 +320,17 @@ h1 {
   --tint:#fcf4e7;
 }
 
-.notify_pending {
+.handoff_pending {
+  --accent:#6a5bc4;
+  --tint:#f1effc;
+}
+
+.followup {
   --accent:#328879;
   --tint:#eaf6f2;
 }
 
-.done {
+.closed {
   --accent:#748494;
   --tint:#eff3f5;
 }
@@ -552,7 +557,7 @@ label {
   margin:18px 0 9px;
 }
 
-.required {
+.required,.optional {
   font-size:8px;
   color:#879cad;
   font-weight:400;
@@ -680,16 +685,6 @@ input:focus,select:focus {
   overflow-wrap:anywhere;
 }
 
-.attempts {
-  font-size:10px;
-  color:#8b9ca8;
-  display:flex;
-  justify-content:space-between;
-}
-
-.attempts strong {
-  color:#597b92;
-}
 
 .complete-note {
   margin-top:22px;
@@ -826,5 +821,150 @@ input:focus,select:focus {
   }
   .page-footer span:last-child {
     display:none;
+  }
+}
+
+/* 오늘 인계 · 경고 표시 · 결과 코드 */
+.handoff-panel {
+  display:grid;
+  grid-template-columns:minmax(0,260px) minmax(0,1fr);
+  gap:24px;
+  padding:20px;
+  margin-bottom:22px;
+  border-left:4px solid #6a5bc4;
+}
+
+.handoff-panel.level-danger {
+  border-left-color:#c8463d;
+}
+
+.handoff-panel.level-normal {
+  border-left-color:#9fb0bd;
+}
+
+.handoff-count {
+  font-size:12px;
+  color:#556776;
+  margin:10px 0;
+}
+
+.handoff-count strong {
+  font-size:22px;
+  color:var(--ink);
+}
+
+.handoff-done {
+  font-size:10px;
+  color:#5f7a8c;
+  margin:8px 0 0;
+  line-height:1.6;
+}
+
+.handoff-form {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr)) auto;
+  gap:12px;
+  align-items:end;
+}
+
+.handoff-form label {
+  margin-top:0;
+}
+
+.alert-chip {
+  display:inline-block;
+  border-radius:4px;
+  padding:5px 8px;
+  font-size:10px;
+  font-weight:600;
+  margin:0;
+  background:#eff3f5;
+  color:#5f7180;
+}
+
+.alert-chip.warn {
+  background:#fcf4e7;
+  color:#9a6a17;
+}
+
+.alert-chip.danger {
+  background:#fdecea;
+  color:#b33a31;
+}
+
+.alert-text.warn {
+  color:#9a6a17;
+}
+
+.alert-text.danger {
+  color:#b33a31;
+  font-weight:600;
+}
+
+.finding-text {
+  font-family:ui-monospace,Menlo,Consolas,monospace;
+  font-size:11px;
+}
+
+.finding-chip {
+  display:inline-block;
+  font-family:ui-monospace,Menlo,Consolas,monospace;
+  background:#eef3ff;
+  color:#2f56b8;
+  border-radius:4px;
+  padding:3px 6px;
+  margin:0 4px 4px 0;
+}
+
+.finding-chip.unregistered {
+  background:#fcf4e7;
+  color:#9a6a17;
+}
+
+.finding-chip.unregistered::after {
+  content:" · 검토";
+  font-family:inherit;
+  font-size:9px;
+}
+
+.search-form {
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.search-form input {
+  width:210px;
+}
+
+.visually-hidden {
+  position:absolute;
+  width:1px;
+  height:1px;
+  overflow:hidden;
+  clip:rect(0 0 0 0);
+  white-space:nowrap;
+}
+
+@media(max-width:1150px) {
+  .stat-grid {
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+  .handoff-panel {
+    grid-template-columns:minmax(0,1fr);
+  }
+  .handoff-form {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+@media(max-width:950px) {
+  .panel-header {
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .search-form input {
+    width:auto;
+    flex:1;
   }
 }

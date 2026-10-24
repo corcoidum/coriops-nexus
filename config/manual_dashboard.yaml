@@ -1,0 +1,13 @@
+version: '0.2-prototype'
+status: SYNTHETIC_ONLY
+# 수동 대시보드 시연값. 정식 config/rules.yaml의 R02·R07을 대체하지 않는다.
+# [가정] 기존 장부에서 위탁 다음 진료일 결과가 대부분이었다는 사용자 대장 관찰(A12). 운영 전 실측으로 조정한다.
+result_delay_business_days: 2
+# 재검 기한이 이 일수 이내면 '30일 이내'로 강조한다. 정식 R07 calendar_days와 같은 값.
+followup_window_days: 30
+# 합성 기본값. 실제 직원·씨젠 기사 이름을 저장소에 넣지 않는다.
+handoff_defaults:
+  registered_by: 테스트 접수자
+  handed_by: 테스트 인계자
+  receiver_name: 테스트 수령인
+staff_name_max_length: 20

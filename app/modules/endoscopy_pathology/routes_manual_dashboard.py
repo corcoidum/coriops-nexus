@@ -31,42 +31,58 @@ def case_redirect(case_id: UUID) -> RedirectResponse:
     return RedirectResponse(f"/dashboard?selected_id={case_id}", status_code=303)
 
 
+def parse_date(value: str) -> date | None:
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        raise DashboardError("날짜 형식을 확인해 주세요.", 422) from None
+
+
 @router.get("/")
 def home():
     return RedirectResponse("/dashboard", status_code=303)
 
 
 @router.get("/dashboard")
-def dashboard(request: Request, service: Service, stage: str = "ALL", selected_id: UUID | None = None):
-    context = service.snapshot(stage=stage, selected_id=selected_id)
+def dashboard(request: Request, service: Service, stage: str = "ALL",
+              selected_id: UUID | None = None, q: str = ""):
+    context = service.snapshot(stage=stage, selected_id=selected_id, query=q)
     context["csrf_token"] = request.app.state.csrf_token
     return request.app.state.templates.TemplateResponse(
         request=request, name="manual_dashboard.html", context=context,
     )
 
 
+@router.post("/demo/handoff", dependencies=[Csrf])
+def handoff(service: Service, registered_by: Annotated[str, Form()] = "",
+            handed_by: Annotated[str, Form()] = "", receiver_name: Annotated[str, Form()] = "",
+            confirmed_count: Annotated[str, Form()] = ""):
+    if not confirmed_count.isdigit() or len(confirmed_count) > 3:
+        raise DashboardError("확인한 병 수를 숫자로 입력해 주세요.", 422)
+    service.handoff(registered_by, handed_by, receiver_name, int(confirmed_count))
+    return RedirectResponse("/dashboard?stage=RESULT_PENDING", status_code=303)
+
+
 @router.post("/demo/cases/{case_id}/receive", dependencies=[Csrf])
 def receive(case_id: UUID, service: Service,
-            result_summary: Annotated[str, Form()] = "",
-            site_summary: Annotated[str, Form()] = ""):
-    service.receive(case_id, result_summary, site_summary)
+            report_ref: Annotated[str, Form()] = "",
+            result_notation: Annotated[str, Form()] = "",
+            site_summary: Annotated[str, Form()] = "",
+            sydney_notation: Annotated[str, Form()] = ""):
+    service.receive(case_id, report_ref, result_notation, site_summary, sydney_notation)
     return case_redirect(case_id)
 
 
 @router.post("/demo/cases/{case_id}/decide", dependencies=[Csrf])
 def decide(case_id: UUID, service: Service, mode: Annotated[str, Form()] = "",
            due_date: Annotated[str, Form()] = "", reason: Annotated[str, Form()] = ""):
-    try:
-        parsed_date = date.fromisoformat(due_date) if due_date else None
-    except ValueError:
-        raise DashboardError("날짜 형식을 확인해 주세요.", 422) from None
-    service.decide(case_id, mode, parsed_date, reason)
+    service.decide(case_id, mode, parse_date(due_date), reason)
     return case_redirect(case_id)
 
 
-@router.post("/demo/cases/{case_id}/notify", dependencies=[Csrf])
-def notify(case_id: UUID, service: Service, outcome: Annotated[str, Form()] = ""):
-    service.notify(case_id, outcome)
+@router.post("/demo/cases/{case_id}/followup-done", dependencies=[Csrf])
+def followup_done(case_id: UUID, service: Service, done_on: Annotated[str, Form()] = ""):
+    service.complete_followup(case_id, parse_date(done_on))
     return case_redirect(case_id)
 
 
