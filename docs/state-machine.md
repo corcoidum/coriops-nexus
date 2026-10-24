@@ -1,6 +1,6 @@
 # PathologyRequest 상태 머신
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `3bf70cbc444519cedf50274e25af3645c5694630e671a7363a75d794fa8c7609`
+> 원천: `ontology/coriops.yaml` · SHA-256 `3219555deb849c8c405298597adbeacd79b3032992a172c5bc72bc5559ae6704`
 > Phase 0 일회성 로컬 생성 스냅샷. 영구 생성기·CI 일치 검사는 Phase 1 예정. 직접 편집하지 않는다.
 
 

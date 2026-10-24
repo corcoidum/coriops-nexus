@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "coriops-nexus"
 version = "0.1.0.dev0"
-description = "원내 조직검체 업무의 합성 Excel·수동 대시보드 프로토타입"
+description = "원내 조직검체 업무의 합성 Excel·조직검체 장부 대시보드 프로토타입"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "openpyxl==3.1.5", "PyYAML==6.0.3", "fastapi==0.159.1",
-    "uvicorn==0.54.0", "Jinja2==3.1.6", "python-multipart==0.0.32",
+    "uvicorn==0.54.0", "Jinja2==3.1.6", "python-multipart==0.0.32", "holidays==0.107",
 ]
 
 [project.optional-dependencies]
