@@ -1,6 +1,6 @@
 # ERD
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `3bf70cbc444519cedf50274e25af3645c5694630e671a7363a75d794fa8c7609`
+> 원천: `ontology/coriops.yaml` · SHA-256 `e5278a645eed4a36a56400d3dab24e5ad7f020ca01173a3b331e0bdc240a48d0`
 > Phase 0 일회성 로컬 생성 스냅샷. 영구 생성기·CI 일치 검사는 Phase 1 예정. 직접 편집하지 않는다.
 
 
@@ -315,6 +315,37 @@ erDiagram
         uuid report_id FK
         uuid specimen_id FK
     }
+    ResultCode {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
+        string code
+        string label
+        enum scope
+        enum severity_tier
+        boolean active
+    }
+    ReportFinding {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
+        uuid report_id FK
+        integer display_order
+        string result_code
+        jsonb modifiers
+        integer lesion_count
+    }
+    SydneyGrading {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
+        uuid report_id FK
+        enum h_pylori
+        enum neutrophil
+        enum mononuclear
+        enum atrophy
+        enum intestinal_metaplasia
+    }
     PhysicianReview {
         uuid id PK
         timestamptz created_at
@@ -350,6 +381,9 @@ erDiagram
     PathologyReport }o--|| PathologyRequest : resultOf
     PathologyReport }o--o{ Specimen : coversSpecimen
     PathologyReport o|--|| PathologyReport : supersedes
+    PathologyReport ||--o{ ReportFinding : hasFinding
+    ReportFinding }o--|| ResultCode : usesResultCode
+    PathologyReport ||--o| SydneyGrading : hasGrading
     PhysicianReview }o--o{ PathologyReport : reviewsReports
     PhysicianReview }o--|| PathologyRequest : reviewsRequest
     PhysicianReview }o--|| Staff : reviewedBy

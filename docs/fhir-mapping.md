@@ -1,6 +1,6 @@
 # FHIR 개념 대응
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `3bf70cbc444519cedf50274e25af3645c5694630e671a7363a75d794fa8c7609`
+> 원천: `ontology/coriops.yaml` · SHA-256 `e5278a645eed4a36a56400d3dab24e5ad7f020ca01173a3b331e0bdc240a48d0`
 > Phase 0 일회성 로컬 생성 스냅샷. 영구 생성기·CI 일치 검사는 Phase 1 예정. 직접 편집하지 않는다.
 
 
@@ -34,7 +34,10 @@
 | Specimen | Specimen |
 | PathologyReport | DiagnosticReport |
 | ReportSpecimen | DiagnosticReport.specimen |
+| ResultCode | CodeSystem.concept |
+| ReportFinding | DiagnosticReport.conclusionCode |
+| SydneyGrading | Observation |
 | PhysicianReview | 직접 대응 없음 — 내부 운영 엔티티 |
 | ReviewReport | 직접 대응 없음 — 내부 운영 엔티티 |
 
-PhysicianReview는 v0.1 내부 확인 기록이다. DiagnosticReport는 보고서 번호·버전·검체 coverage metadata 대응이며 원문을 저장하지 않는다. Audit/Access의 개념 대응은 리소스 변환을 허용하는 것이 아니다. 동사형 관계와 UUID는 ontology YAML을 유지한다.
+PhysicianReview는 v0.1 내부 확인 기록이다. DiagnosticReport는 보고서 번호·버전·검체 coverage metadata 대응이며 판독문 원문을 저장하지 않는다. ReportFinding은 등록 결과 코드만 담는 conclusionCode 개념 대응이고, SydneyGrading은 등급 코드만 담는 Observation 개념 대응이다(A04). Audit/Access의 개념 대응은 리소스 변환을 허용하는 것이 아니다. 동사형 관계와 UUID는 ontology YAML을 유지한다.

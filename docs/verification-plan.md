@@ -17,6 +17,7 @@
 | 단계 | 테스트 | 기대 증거 |
 |---|---|---|
 | 1 | migrations up/down/up, role grants, YAML↔ORM↔DDL, PK/timestamps, module boundary | 깨끗한 PostgreSQL16 DB에 적용·되돌리기·재적용, C1~C4 |
+| 1 | result_codes.yaml↔ResultCode 적재, ReportFinding 미등록 코드·modifier 거부, 결과 자유서술 컬럼 부재 | 등록 코드만 저장, SydneyGrading 미기재 null 유지, severity_tier가 Rule 입력에 쓰이지 않음 |
 | 1 | seed_synthetic | 테스트 이름 접두 30명·시행40·의뢰25, 전 상태 및 BOTH/부분·정정 합성 fixture. 상태 seed도 이후 Engine 또는 승인 migration 경유 |
 | 2 | 전이 표의 모든 행 성공·권한/guard/사유 실패, 나머지 미등록 전이 실패 | from/to뿐 아니라 action별 검사, rollback 시 Audit·상태 모두 원자성 |
 | 2 | ORM 할당·bulk/raw SQL·초기 DRAFT 외 INSERT·가짜 전이 함수 인자 | 서비스·Engine 경유 강제, 전이·Audit 우회 거부 |

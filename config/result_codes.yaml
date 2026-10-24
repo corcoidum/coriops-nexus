@@ -1,0 +1,27 @@
+status: DESIGN_REQUIRES_OWNER_CONFIRMATION
+# 사용자 결정 A04: 조직검사 결과는 등록 코드와 Sydney 등급만 저장한다(판독문 원문 저장 금지).
+# 코드 목록은 기존 수기·엑셀 대장의 표기 방식에서 가져온 [가정]이다. 의미·tier는 사용자·원장 확인 전 확정 아님.
+# severity_tier는 대시보드 정렬·강조 전용이다. 재검 필요 여부·종류·기한은 원장이 PhysicianReview로 지정한다.
+notation: '{code}#{lesion_count}({modifier}/{modifier}), 여러 결과는 쉼표 구분'
+codes:
+  H: {label: Hyperplastic polyp, scope: ANY, severity_tier: ROUTINE}
+  TA: {label: Tubular adenoma, scope: ANY, severity_tier: ATTENTION}
+  SS: {label: Sessile serrated lesion, scope: LOWER_GI, severity_tier: ATTENTION}
+  FGP: {label: Fundic gland polyp, scope: UPPER_GI, severity_tier: ROUTINE}
+  CG: {label: Chronic gastritis, scope: UPPER_GI, severity_tier: ROUTINE}
+  CAG: {label: Chronic atrophic gastritis, scope: UPPER_GI, severity_tier: ATTENTION}
+  CNI: {label: '[확인 필요]', scope: ANY, severity_tier: ROUTINE}
+  INF_P: {label: Inflammatory polyp, scope: ANY, severity_tier: ROUTINE, ledger_notation: inf.p}
+  ADENOCARCINOMA: {label: Adenocarcinoma, scope: ANY, severity_tier: CRITICAL}
+modifiers:
+  L: {label: Low-grade dysplasia}
+  e: {label: Erosion}
+  im: {label: Intestinal metaplasia, raises_tier_to: ATTENTION}
+sydney_notation:
+  HP: h_pylori
+  Neu: neutrophil
+  Mon: mononuclear
+  Atr: atrophy
+  IM: intestinal_metaplasia
+sydney_grades: {'-': NEG, '+': POS1, '++': POS2, '+++': POS3}
+unknown_code_policy: reject_and_request_registration

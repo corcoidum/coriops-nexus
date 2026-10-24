@@ -1,6 +1,6 @@
 # Ontology 데이터 사전
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `3bf70cbc444519cedf50274e25af3645c5694630e671a7363a75d794fa8c7609`
+> 원천: `ontology/coriops.yaml` · SHA-256 `e5278a645eed4a36a56400d3dab24e5ad7f020ca01173a3b331e0bdc240a48d0`
 > Phase 0 일회성 로컬 생성 스냅샷. 영구 생성기·CI 일치 검사는 Phase 1 예정. 직접 편집하지 않는다.
 
 
@@ -404,7 +404,7 @@
 
 복합 UNIQUE: `request_id, logical_report_key, version_no`
 
-제약: 결과 원문·소견·첨부파일 없음 / 정정 버전은 이전 버전 전체 coverage를 명시적으로 대체
+제약: 판독문 원문·자유서술 소견·첨부파일 없음 / 결과는 등록 코드(ReportFinding)와 Sydney 등급(SydneyGrading)만 저장 / 정정 버전은 이전 버전 전체 coverage와 결과 코드를 명시적으로 대체
 
 ### ReportSpecimen
 
@@ -418,6 +418,51 @@
 복합 UNIQUE: `report_id, specimen_id`
 
 제약: 동일 의뢰 내 검체만 / 보고서 한 버전은 검체 한 개 이상 포함
+
+### ResultCode
+
+테이블 `result_codes` · 위치 `endoscopy_pathology` · FHIR `CodeSystem.concept`
+
+| 필드 | 타입 | NULL | 제약 |
+|---|---|---|---|
+| code | string | 금지 | unique=True |
+| label | string | 금지 | — |
+| scope | enum | 금지 | enum=ResultCodeScope |
+| severity_tier | enum | 금지 | enum=ResultSeverityTier |
+| active | boolean | 금지 | — |
+
+제약: config/result_codes.yaml에서 적재하며 화면 편집 없음 / severity_tier는 화면 정렬·강조 전용이며 임상 판단·F/U 필요성·기한 자동 결정에 사용 금지 / 코드 추가·tier 변경은 원장 승인 후 config 변경 절차
+
+### ReportFinding
+
+테이블 `report_findings` · 위치 `endoscopy_pathology` · FHIR `DiagnosticReport.conclusionCode` · 불변 기록
+
+| 필드 | 타입 | NULL | 제약 |
+|---|---|---|---|
+| report_id | uuid | 금지 | references=PathologyReport |
+| display_order | integer | 금지 | — |
+| result_code | string | 금지 | registry=result_codes |
+| modifiers | jsonb | 금지 | registry=result_modifiers |
+| lesion_count | integer | 허용 | — |
+
+복합 UNIQUE: `report_id, display_order`
+
+제약: 대장 표기 예 TA#2(L)는 result_code=TA·lesion_count=2·modifiers=[L] / modifiers는 등록 코드 배열만이며 빈 배열 허용 / 자유서술·판독문 원문 저장 금지 / 결과를 기록한 보고서 버전은 finding 1개 이상
+
+### SydneyGrading
+
+테이블 `sydney_gradings` · 위치 `endoscopy_pathology` · FHIR `Observation` · 불변 기록
+
+| 필드 | 타입 | NULL | 제약 |
+|---|---|---|---|
+| report_id | uuid | 금지 | references=PathologyReport; unique=True |
+| h_pylori | enum | 허용 | enum=SydneyGrade |
+| neutrophil | enum | 허용 | enum=SydneyGrade |
+| mononuclear | enum | 허용 | enum=SydneyGrade |
+| atrophy | enum | 허용 | enum=SydneyGrade |
+| intestinal_metaplasia | enum | 허용 | enum=SydneyGrade |
+
+제약: 대장 표기 HP-/Neu++/Mon++/Atr+/IM-의 구조화 / 위 검체가 포함된 보고서에만 허용 / 미기재 항목은 null이며 NEG로 추정 금지
 
 ### PhysicianReview
 
@@ -482,6 +527,9 @@
 | PurgeStatus | PROPOSED, APPROVED, COMPLETED, FAILED |
 | ReviewDisposition | CHECKED, INVESTIGATE |
 | ImportStatus | COMMITTED, REJECTED |
+| ResultCodeScope | UPPER_GI, LOWER_GI, ANY |
+| ResultSeverityTier | ROUTINE, ATTENTION, CRITICAL |
+| SydneyGrade | NEG, POS1, POS2, POS3 |
 
 ## 명명된 관계
 
@@ -496,6 +544,9 @@
 | resultOf | PathologyReport → PathologyRequest | N:1 | request_id |
 | coversSpecimen | PathologyReport → Specimen | N:M | ReportSpecimen |
 | supersedes | PathologyReport → PathologyReport | 0..1:1 | supersedes_id |
+| hasFinding | PathologyReport → ReportFinding | 1:N | report_id |
+| usesResultCode | ReportFinding → ResultCode | N:1 | result_code |
+| hasGrading | PathologyReport → SydneyGrading | 1:0..1 | report_id |
 | reviewsReports | PhysicianReview → PathologyReport | N:M | ReviewReport |
 | reviewsRequest | PhysicianReview → PathologyRequest | N:1 | request_id |
 | reviewedBy | PhysicianReview → Staff | N:1 | ordered_by |
@@ -534,6 +585,14 @@ subject_types:
     owner: kernel
 disabled_actor_types:
 - AGENT
+result_codes:
+  source: config/result_codes.yaml
+  key: codes
+  owner: endoscopy_pathology
+result_modifiers:
+  source: config/result_codes.yaml
+  key: modifiers
+  owner: endoscopy_pathology
 ```
 
 ## 무결성 정책
@@ -545,6 +604,7 @@ disabled_actor_types:
 - `one_active_cycle`: subject_type·subject_id별 ended_at이 null인 WorkCycle은 최대 1개
 - `patient_consistency`: FollowUpPlan.patient_id와 source의 patient_id 일치
 - `report_consistency`: ReportSpecimen·ReviewReport는 동일 의뢰 행만 연결
+- `result_code_storage`: 결과는 ReportFinding·SydneyGrading의 등록 코드만 저장하고 판독문 원문·자유서술은 어느 테이블·로그·Audit에도 저장 금지
 - `timestamps_on_all_tables`: True
 - `initial_status_insert`: DRAFT 외 상태의 INSERT 금지
 - `report_versioning`: supersedes는 동일 의뢰·동일 logical_report_key의 직전 version_no이며 분기 금지

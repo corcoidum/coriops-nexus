@@ -1,4 +1,4 @@
-schema_version: '0.1-design.1'
+schema_version: '0.1-design.2'
 status: PHASE_0_REVIEW
 language: ko
 scope: endoscopy_pathology
@@ -38,6 +38,9 @@ enums:
   PurgeStatus: [PROPOSED, APPROVED, COMPLETED, FAILED]
   ReviewDisposition: [CHECKED, INVESTIGATE]
   ImportStatus: [COMMITTED, REJECTED]
+  ResultCodeScope: [UPPER_GI, LOWER_GI, ANY]
+  ResultSeverityTier: [ROUTINE, ATTENTION, CRITICAL]
+  SydneyGrade: [NEG, POS1, POS2, POS3]
 registries:
   followup_kinds:
     PATH.ENDOSCOPY: {owner: endoscopy_pathology, meaning: 원장 지정 재내시경}
@@ -45,6 +48,8 @@ registries:
     PATH.Request: {class: PathologyRequest, owner: endoscopy_pathology}
     CORE.FollowUpPlan: {class: FollowUpPlan, owner: kernel}
   disabled_actor_types: [AGENT]
+  result_codes: {source: config/result_codes.yaml, key: codes, owner: endoscopy_pathology}
+  result_modifiers: {source: config/result_codes.yaml, key: modifiers, owner: endoscopy_pathology}
 classes:
   Patient:
     table: patients
@@ -371,7 +376,7 @@ classes:
       source: {type: enum, enum: ReportSource}
       correction_reason: {type: string, nullable: true}
     unique: [[request_id, logical_report_key, version_no]]
-    constraints: [결과 원문·소견·첨부파일 없음, 정정 버전은 이전 버전 전체 coverage를 명시적으로 대체]
+    constraints: [판독문 원문·자유서술 소견·첨부파일 없음, 결과는 등록 코드(ReportFinding)와 Sydney 등급(SydneyGrading)만 저장, 정정 버전은 이전 버전 전체 coverage와 결과 코드를 명시적으로 대체]
   ReportSpecimen:
     table: report_specimens
     layer: endoscopy_pathology
@@ -382,6 +387,43 @@ classes:
       specimen_id: {type: uuid, references: Specimen}
     unique: [[report_id, specimen_id]]
     constraints: [동일 의뢰 내 검체만, 보고서 한 버전은 검체 한 개 이상 포함]
+  ResultCode:
+    table: result_codes
+    layer: endoscopy_pathology
+    fhir: CodeSystem.concept
+    fields:
+      code: {type: string, unique: true}
+      label: {type: string}
+      scope: {type: enum, enum: ResultCodeScope}
+      severity_tier: {type: enum, enum: ResultSeverityTier}
+      active: {type: boolean}
+    constraints: [config/result_codes.yaml에서 적재하며 화면 편집 없음, severity_tier는 화면 정렬·강조 전용이며 임상 판단·F/U 필요성·기한 자동 결정에 사용 금지, 코드 추가·tier 변경은 원장 승인 후 config 변경 절차]
+  ReportFinding:
+    table: report_findings
+    layer: endoscopy_pathology
+    fhir: DiagnosticReport.conclusionCode
+    immutable: true
+    fields:
+      report_id: {type: uuid, references: PathologyReport}
+      display_order: {type: integer}
+      result_code: {type: string, registry: result_codes}
+      modifiers: {type: jsonb, registry: result_modifiers}
+      lesion_count: {type: integer, nullable: true}
+    unique: [[report_id, display_order]]
+    constraints: ['대장 표기 예 TA#2(L)는 result_code=TA·lesion_count=2·modifiers=[L]', modifiers는 등록 코드 배열만이며 빈 배열 허용, 자유서술·판독문 원문 저장 금지, 결과를 기록한 보고서 버전은 finding 1개 이상]
+  SydneyGrading:
+    table: sydney_gradings
+    layer: endoscopy_pathology
+    fhir: Observation
+    immutable: true
+    fields:
+      report_id: {type: uuid, references: PathologyReport, unique: true}
+      h_pylori: {type: enum, enum: SydneyGrade, nullable: true}
+      neutrophil: {type: enum, enum: SydneyGrade, nullable: true}
+      mononuclear: {type: enum, enum: SydneyGrade, nullable: true}
+      atrophy: {type: enum, enum: SydneyGrade, nullable: true}
+      intestinal_metaplasia: {type: enum, enum: SydneyGrade, nullable: true}
+    constraints: [대장 표기 HP-/Neu++/Mon++/Atr+/IM-의 구조화, 위 검체가 포함된 보고서에만 허용, 미기재 항목은 null이며 NEG로 추정 금지]
   PhysicianReview:
     table: physician_reviews
     layer: endoscopy_pathology
@@ -423,6 +465,9 @@ relations:
   resultOf: {from: PathologyReport, to: PathologyRequest, cardinality: 'N:1', via: request_id}
   coversSpecimen: {from: PathologyReport, to: Specimen, cardinality: 'N:M', through: ReportSpecimen}
   supersedes: {from: PathologyReport, to: PathologyReport, cardinality: '0..1:1', via: supersedes_id}
+  hasFinding: {from: PathologyReport, to: ReportFinding, cardinality: '1:N', via: report_id}
+  usesResultCode: {from: ReportFinding, to: ResultCode, cardinality: 'N:1', via: result_code, target_key: code}
+  hasGrading: {from: PathologyReport, to: SydneyGrading, cardinality: '1:0..1', via: report_id}
   reviewsReports: {from: PhysicianReview, to: PathologyReport, cardinality: 'N:M', through: ReviewReport}
   reviewsRequest: {from: PhysicianReview, to: PathologyRequest, cardinality: 'N:1', via: request_id}
   reviewedBy: {from: PhysicianReview, to: Staff, cardinality: 'N:1', via: ordered_by}
@@ -450,6 +495,7 @@ integrity:
   one_active_cycle: subject_type·subject_id별 ended_at이 null인 WorkCycle은 최대 1개
   patient_consistency: FollowUpPlan.patient_id와 source의 patient_id 일치
   report_consistency: ReportSpecimen·ReviewReport는 동일 의뢰 행만 연결
+  result_code_storage: 결과는 ReportFinding·SydneyGrading의 등록 코드만 저장하고 판독문 원문·자유서술은 어느 테이블·로그·Audit에도 저장 금지
   timestamps_on_all_tables: true
   initial_status_insert: DRAFT 외 상태의 INSERT 금지
   report_versioning: supersedes는 동일 의뢰·동일 logical_report_key의 직전 version_no이며 분기 금지

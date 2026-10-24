@@ -1,6 +1,6 @@
 # CoriOps Nexus v0.1
 
-내시경 검체 채취 → 수탁 의뢰 → 결과 수신 → 원장 확인 → 환자 안내 → F/U 등록을 관리할 원내 LAN 전용 보조 업무대장이다. 진단·치료·F/U 주기는 원장이 결정한다. 결과 원문, 연락처, 주소, 주민등록번호, 보험정보는 저장하지 않는다.
+내시경 검체 채취 → 수탁 의뢰 → 결과 수신 → 원장 확인 → 환자 안내 → F/U 등록을 관리할 원내 LAN 전용 보조 업무대장이다. 진단·치료·F/U 주기는 원장이 결정한다. 조직검사 결과는 등록된 결과 코드(예: `TA#2(L)`)와 Sydney 등급만 구조화해 저장하고 판독문 원문은 저장하지 않는다(A04). 연락처, 주소, 주민등록번호, 보험정보는 저장하지 않는다.
 
 **현재: Phase 0 설계 산출물 작성 완료 / 검토 대기. 실행 가능한 앱은 없다.** Phase 1 이후 코드, DB, 배포 설정은 만들지 않았다. 실제 LAN 배포·실데이터 사용은 수행하지 않았다.
 
@@ -11,7 +11,7 @@ GitHub 저장소: [corcoidum/coriops-nexus](https://github.com/corcoidum/coriops
 1. [명세 충돌 8개와 결정 상태](docs/conflict-resolution.md)
 2. [Phase 1 전 확인할 질문](docs/open-questions.md)
 3. [Phase 0 검증 보고](docs/phase-0-report.md)
-4. [데이터 사전](docs/ontology.md), [ERD](docs/erd.md), [상태 머신](docs/state-machine.md), [Rule](docs/rules.md)
+4. [결과 코드 목록 초안](config/result_codes.yaml), [데이터 사전](docs/ontology.md), [ERD](docs/erd.md), [상태 머신](docs/state-machine.md), [Rule](docs/rules.md)
 5. [서비스·권한·트랜잭션 설계](docs/architecture.md)
 6. [개인정보 대응표](docs/privacy/compliance-matrix.md), [보유·파기 초안](docs/privacy/retention-policy.md)
 7. [확장 계약·Phase Gate](docs/roadmap.md), [검증 계획](docs/verification-plan.md)
