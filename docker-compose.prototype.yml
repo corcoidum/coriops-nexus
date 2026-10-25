@@ -54,6 +54,16 @@ services:
     volumes:
       - ./outputs:/outputs
     command: [python, -m, app.modules.endoscopy_pathology.ledger_demo, --output, /outputs/01a15ebd-ee2d-7793-a059-7cf7132919ed/ledger-demo.xlsx]
+  lab-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.prototype
+    image: coriops-nexus-prototype:local
+    profiles: [lab-demo]
+    network_mode: none
+    volumes:
+      - ./outputs:/outputs
+    command: [python, -m, app.modules.screening_lab.ledger_demo, --output, /outputs/lab-ledger-demo.xlsx]
 networks:
   dashboard-local:
   test-internal:

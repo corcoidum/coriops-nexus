@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>조직검체 업무 · CoriOps Nexus</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/dashboard"><span class="brand-mark">C</span><span>CoriOps<span class="brand-sub">NEXUS</span></span></a>
+  <div class="sidebar-section">WORKSPACE</div>
+  <a class="nav-item active" href="/dashboard"><span aria-hidden="true">▦</span> 조직검체 업무</a>
+  <div class="sidebar-note"><span class="status-dot"></span> 수동 입력으로 시작하기<p>씨젠 확인은 평소대로,<br>남은 업무는 한 화면에서.</p></div>
+  <div class="sidebar-bottom"><span class="demo-label">합성 자료 8건</span><form action="/demo/reset" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="reset-button" type="submit">↻ 시연 처음부터</button></form></div>
+</aside>
+<main class="workspace">
+  <header class="topbar"><span>진료 지원 <span class="breadcrumb">/</span> 조직병리 업무</span><span class="date">{{ today.strftime('%Y.%m.%d') }}</span></header>
+  <div class="page-body">
+    <div class="page-heading"><div><span class="eyebrow">TODAY'S WORKFLOW</span><h1>오늘 확인할 조직검체 업무</h1><p>직접 확인한 결과를 적고, 다음에 할 일을 이어갑니다.</p></div><span class="preview-badge"><span class="status-dot"></span> 첫 화면 미리보기</span></div>
+    <div class="demo-banner"><strong>합성 자료로 눌러보세요.</strong><span>실제 자료 입력용이 아닙니다. 시연을 처음부터 시작하거나 앱을 재시작하면 입력이 초기화됩니다.</span></div>
+    <section class="stat-grid" aria-label="업무 단계별 건수">
+      {% for key, label in stage_labels.items() %}
+      <a href="/dashboard?stage={{ key }}" class="stat-card {{ key|lower }} {% if stage == key %}selected{% endif %}" {% if stage == key %}aria-current="page"{% endif %}>
+        <div class="stat-top"><span>{{ label }}</span><span class="stat-step">0{{ loop.index }}</span></div>
+        <div class="stat-number">{{ counts[key] }}<span>건</span><span class="stat-arrow" aria-hidden="true">↗</span></div>
+        <div class="stat-caption">{% if key == 'RESULT_PENDING' %}씨젠 전체 결과 확인 후 입력{% elif key == 'DOCTOR_PENDING' %}원장이 정한 날짜를 기록{% elif key == 'NOTIFY_PENDING' %}환자에게 안내할 업무{% else %}안내 기록을 마친 업무{% endif %}</div>
+      </a>
+      {% endfor %}
+    </section>
+    <div class="work-grid">
+      <section class="panel worklist">
+        <div class="panel-header"><div><h2>{% if stage == 'ALL' %}전체 업무{% else %}{{ stage_labels[stage] }}{% endif %}<span class="count-tag">{{ cases|length }}</span></h2><p>행을 선택하면 오른쪽에서 다음 업무를 기록합니다.</p></div><a class="text-link" href="/dashboard">전체 보기</a></div>
+        <div class="table-scroll"><table><thead><tr><th scope="col">시연 대상</th><th scope="col">검사</th><th scope="col">진행 상태</th><th scope="col">다음 업무</th></tr></thead><tbody>
+        {% for case in cases %}
+          <tr class="{% if selected and case.id == selected.id %}selected-row{% endif %}"><td><a class="patient-link" href="/dashboard?stage={{ stage }}&amp;selected_id={{ case.id }}">{{ case.display_name }}</a><span class="cell-sub">{{ case.chart_no }}</span></td><td><span>{{ case.procedure_type }}</span><span class="cell-sub">{{ case.procedure_date.strftime('%m.%d') }} · 검체 {{ case.specimen_count }}개</span></td><td><span class="stage-pill {{ case.stage|lower }}">{{ case.stage_label }}</span></td><td><a class="row-action" href="/dashboard?stage={{ stage }}&amp;selected_id={{ case.id }}">{{ case.action_label }} <span aria-hidden="true">›</span></a></td></tr>
+        {% else %}<tr><td colspan="4" class="empty-state">이 단계에 남은 업무가 없습니다.</td></tr>{% endfor %}
+        </tbody></table></div>
+        <div class="table-footer"><span>입력 예시 {{ cases|length }}건 / 전체 {{ total }}건</span><span>결과 해석·재검 시점은 원장이 결정합니다.</span></div>
+      </section>
+      <section class="panel detail" aria-labelledby="detail-title">
+      {% if selected %}
+        <div class="detail-header"><span class="eyebrow">NEXT ACTION</span><h2 id="detail-title">{{ selected.action_label }}</h2><div class="detail-person">{{ selected.display_name }}<span>{{ selected.procedure_type }} · {{ selected.chart_no }}</span></div></div>
+        <div class="detail-body">
+          <div class="step-track" aria-label="현재 단계"><span class="step-done">1</span><i></i><span class="{% if selected.stage != 'RESULT_PENDING' %}step-done{% endif %}">2</span><i></i><span class="{% if selected.stage in ['NOTIFY_PENDING', 'DONE'] %}step-done{% endif %}">3</span><i></i><span class="{% if selected.stage == 'DONE' %}step-done{% endif %}">4</span></div>
+          {% if selected.stage == 'RESULT_PENDING' %}
+          <p class="form-intro">씨젠에 전체 결과가 공개되면, 평소 장부에 쓰던 표현으로 입력합니다.</p>
+          <form action="/demo/cases/{{ selected.id }}/receive" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="result_summary">조직검사결과 <span class="required">필수</span></label><input id="result_summary" name="result_summary" maxlength="120" required placeholder="예: 합성 결과 요약" autocomplete="off"><p class="field-help">약어를 미리 등록할 필요가 없습니다.</p>
+            <label for="site_summary">검사위치 <span class="required">필수</span></label><input id="site_summary" name="site_summary" maxlength="80" required placeholder="예: 합성 검사위치" autocomplete="off">
+            <button class="button primary full" type="submit">결과 입력 완료 <span aria-hidden="true">→</span></button>
+          </form>
+          {% else %}
+          <dl class="result-preview"><div><dt>입력한 결과</dt><dd>{{ selected.result_summary }}</dd></div><div><dt>검사위치</dt><dd>{{ selected.site_summary }}</dd></div></dl>
+          {% if selected.stage == 'DOCTOR_PENDING' %}
+          <p class="form-intro">원장이 정한 재검 시점을 그대로 기록합니다.</p>
+          <form action="/demo/cases/{{ selected.id }}/decide" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="mode">원장 지시</label><select id="mode" name="mode"><option value="required">재검 날짜 지정</option><option value="not_required">재검 불필요</option></select>
+            <label for="due_date">지정한 재검 날짜</label><input type="date" id="due_date" name="due_date"><p class="field-help">권장 날짜는 자동으로 채우지 않습니다.</p>
+            <label for="reason">재검 불필요 사유</label><input id="reason" name="reason" maxlength="120" placeholder="불필요를 선택한 경우 입력" autocomplete="off">
+            <button class="button primary full" type="submit">원장 지시 기록 <span aria-hidden="true">→</span></button>
+          </form>
+          {% else %}
+          <div class="decision-box"><span>기록된 원장 지시</span>{% if selected.followup_due %}<strong>{{ selected.followup_due.strftime('%Y.%m.%d') }} 재검</strong>{% else %}<strong>재검 불필요</strong><p>{{ selected.no_followup_reason }}</p>{% endif %}</div>
+          {% if selected.stage == 'NOTIFY_PENDING' %}
+          <p class="form-intro">원장 지시에 따라 안내한 뒤 결과를 기록합니다. 부재이면 안내 대기에 남습니다.</p>
+          <div class="attempts">지금까지 연락 시도 <strong>{{ selected.contact_attempts }}회</strong></div>
+          <form action="/demo/cases/{{ selected.id }}/notify" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button primary full" name="outcome" value="reached" type="submit">✓ 안내 완료</button><button class="button secondary full" name="outcome" value="no_answer" type="submit">부재 기록</button></form>
+          {% else %}<div class="complete-note"><strong>✓ 안내를 기록했습니다.</strong><p>다른 행을 선택해 남은 업무를 확인하세요.</p></div>{% endif %}
+          {% endif %}{% endif %}
+        </div>
+      {% else %}<div class="detail-body empty-state"><h2 id="detail-title">남은 업무가 없습니다</h2><a href="/dashboard">전체 업무 보기</a></div>{% endif %}
+      </section>
+    </div>
+    <footer class="page-footer"><span>CoriOps Nexus <span class="footer-dot">·</span> 첫 수동 대시보드</span><span>씨젠 수동 확인 → 결과 입력 → 남은 업무 확인</span></footer>
+  </div>
+</main>
+</body>
+</html>

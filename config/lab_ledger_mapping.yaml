@@ -1,0 +1,24 @@
+version: '0.1-prototype'
+status: SYNTHETIC_ONLY
+sheet_name: 혈액검체장부
+freeze_panes: E2
+# 2026-10-25 사용자 제공 13열. 한 행 = 수진자 1명(접수 1건)의 전체 결과.
+key_fields: [report_ref, chart_no]
+# 한 수진자가 여러 종류를 함께 받을 수 있어 검사종류 셀에는 쉼표로 이어 적는다(B07 확인 필요).
+exam_kinds: [일반검진6종, 일반검진9종, 간검진(AFP), 추가b형간염, 추가c형간염]
+# 씨젠 결과의 이상 표시를 그대로 옮긴다. 시스템이 참고치와 비교해 새로 판정하지 않는다.
+result_flags: [H, L]
+columns:
+  - {header: 접수일, field: received_date, kind: date, width: 13}
+  - {header: 접수번호, field: report_ref, kind: text, width: 17}
+  - {header: 차트번호, field: chart_no, kind: text, width: 13}
+  - {header: 수진자명, field: patient_name, kind: text, width: 18}
+  - {header: 성별, field: sex, kind: text, width: 9}
+  - {header: 나이, field: age, kind: text, width: 9}
+  - {header: 검사종류, field: exam_kinds, kind: exam_kinds, width: 26}
+  - {header: 접수인, kind: manual, width: 12}
+  - {header: 인계인, kind: manual, width: 12}
+  - {header: 위탁일, field: entrusted_date, kind: date, width: 13}
+  - {header: 수령인, kind: manual, width: 12}
+  - {header: 결과보고일, field: report_date, kind: date, width: 14}
+  - {header: 결과란, field: items, kind: lab_result, width: 44}
