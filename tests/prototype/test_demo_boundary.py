@@ -64,8 +64,15 @@ def test_db_allowance_only_opens_the_database_address():
     assert result.returncode == 0, result.stderr
 
 
-def test_ledger_profile_keeps_db_internal_and_mounts_only_the_export_folder():
+def test_demo_compose_needs_no_secrets():
+    """메모리 시연·시험 파일에는 DB 장부의 필수 비밀값이 섞이지 않는다(.env 없이 실행)."""
     with open("docker-compose.prototype.yml", encoding="utf-8") as source:
+        text = source.read()
+    assert "CORIOPS_DB_PASSWORD" not in text and ":?" not in text
+
+
+def test_ledger_profile_keeps_db_internal_and_mounts_only_the_export_folder():
+    with open("docker-compose.ledger.yml", encoding="utf-8") as source:
         compose = yaml.safe_load(source)
     ledger, database = compose["services"]["ledger"], compose["services"]["ledger-db"]
     assert ledger["ports"] == ["127.0.0.1:8766:8000"]

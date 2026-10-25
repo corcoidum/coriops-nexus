@@ -1,0 +1,50 @@
+# DB 저장 장부(로그인·접속기록 항상 켜짐). .env에 CORIOPS_DB_PASSWORD·CORIOPS_EXPORT_HOST_DIR가 있어야 한다.
+# 메모리 시연·시험(docker-compose.prototype.yml)은 .env 없이 쓰도록 파일을 나눴다.
+name: coriops-nexus-ledger
+services:
+  ledger-db:
+    image: postgres:16.14-alpine
+    environment:
+      POSTGRES_DB: coriops
+      POSTGRES_USER: coriops
+      POSTGRES_PASSWORD: ${CORIOPS_DB_PASSWORD:?CORIOPS_DB_PASSWORD를 .env에 설정하세요}
+    volumes:
+      - ledger-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [ledger-internal]
+  ledger:
+    build:
+      context: .
+      dockerfile: Dockerfile.prototype
+    image: coriops-nexus-prototype:local
+    depends_on:
+      ledger-db:
+        condition: service_healthy
+    environment:
+      CORIOPS_DATABASE_URL: 'postgresql+psycopg://'
+      PGHOST: ledger-db
+      PGPORT: '5432'
+      PGDATABASE: coriops
+      PGUSER: coriops
+      PGPASSWORD: ${CORIOPS_DB_PASSWORD:?CORIOPS_DB_PASSWORD를 .env에 설정하세요}
+      CORIOPS_EXPORT_DIR: /exports
+    ports:
+      - '127.0.0.1:8766:8000'
+    volumes:
+      # 지정 원내 폴더 하나만 연결한다. 클라우드 동기화 폴더를 지정하지 않는다.
+      - ${CORIOPS_EXPORT_HOST_DIR:?CORIOPS_EXPORT_HOST_DIR를 .env에 설정하세요}:/exports
+    networks: [ledger-local, ledger-internal]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [python, -m, app.ledger_server]
+networks:
+  ledger-local:
+  ledger-internal:
+    internal: true
+volumes:
+  ledger-data:

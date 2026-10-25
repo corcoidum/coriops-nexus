@@ -1,0 +1,56 @@
+# PR과 main에 올라온 코드를 실제 PostgreSQL 16으로 시험한다. 합성 자료만 쓰며 비밀값이 필요 없다.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.14-alpine
+        env:
+          POSTGRES_DB: coriops_test
+          POSTGRES_USER: coriops_test
+          # 시험 전용 일회용 DB. 운영 비밀번호가 아니다.
+          POSTGRES_PASSWORD: ci-only-synthetic
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U coriops_test -d coriops_test"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: coriops_test
+      PGUSER: coriops_test
+      PGPASSWORD: ci-only-synthetic
+      TZ: Asia/Seoul
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: 의존성 설치
+        run: python -m pip install '.[test]'
+      - name: 정적 검사 (pyflakes)
+        run: python -m pyflakes app tests migrations
+      - name: Compose 구성 검사 (시연은 .env 없이, 장부는 필수값과 함께)
+        run: |
+          docker compose -f docker-compose.prototype.yml config --quiet
+          CORIOPS_DB_PASSWORD=ci-only-synthetic CORIOPS_EXPORT_HOST_DIR=/tmp/coriops-exports \
+            docker compose -f docker-compose.ledger.yml config --quiet
+      - name: 시험 (pytest)
+        run: python -m pytest -q

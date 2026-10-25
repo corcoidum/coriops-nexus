@@ -1,5 +1,9 @@
 # CoriOps Nexus v0.1
 
+[![CI](https://github.com/corcoidum/coriops-nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/corcoidum/coriops-nexus/actions/workflows/ci.yml)
+
+> 방향과 단계: [ROADMAP.md](ROADMAP.md) · AI 도우미·기여자 작업 규칙: [AGENTS.md](AGENTS.md)
+
 내시경 검체 채취 → 수탁 의뢰 → 결과 수신 → 원장 확인 → 환자 안내 → F/U 등록을 관리할 원내 LAN 전용 보조 업무대장이다. 진단·치료·F/U 주기는 원장이 결정한다. 조직검사 결과는 등록된 결과 코드(예: `TA#2(L)`)와 Sydney 등급만 구조화해 저장하고 판독문 원문은 저장하지 않는다(A11, 정식 앱 설계). 연락처, 주소, 주민등록번호, 보험정보는 저장하지 않는다.
 
 **지금은 수동 입력으로 첫 화면을 확인한다.** 씨젠은 직접 확인하고 기존 Excel 장부는 평소대로 관리한다. 자동 로그인·약어 자동 변환은 뒤로 미룬다. 약어 사전 없이 합성 자료 12건으로 **오늘 씨젠 인계(3자·병 수 대조) → 결과 코드 입력 → 원장 지시 기록 → 재검 대상 관리** 흐름을 눌러볼 수 있다. 결과 설명은 EMR에서 관리한다(A12).
@@ -10,7 +14,7 @@ docker compose -f docker-compose.prototype.yml --profile dashboard up -d --build
 
 브라우저: <http://127.0.0.1:8765/dashboard> · [대시보드 사용법](docs/manual-dashboard.md) · [내부 보안 유지 제안](docs/privacy/internal-security-proposal.md)
 
-**DB 저장 장부(A13):** 입력은 앱에서 하고 PostgreSQL이 원본이다. 기존 엑셀(Biopsy·CLO·Stool)은 가져오기·대조에, 엑셀 출력은 지정 원내 폴더에만 쓴다. `.env` 설정 후 `docker compose -f docker-compose.prototype.yml --profile ledger up -d --build` → <http://127.0.0.1:8766/dashboard> · [장부 앱 사용법](docs/ledger-app.md). DB 모드에서는 개인 계정 로그인·접속기록이 항상 켜진다(첫 계정: `python -m app.manage create-staff`). 원장 결재 전에는 합성 자료로만 시험한다.
+**DB 저장 장부(A13):** 입력은 앱에서 하고 PostgreSQL이 원본이다. 기존 엑셀(Biopsy·CLO·Stool)은 가져오기·대조에, 엑셀 출력은 지정 원내 폴더에만 쓴다. `.env` 설정 후 `docker compose -f docker-compose.ledger.yml up -d --build` → <http://127.0.0.1:8766/dashboard> · [장부 앱 사용법](docs/ledger-app.md). DB 모드에서는 개인 계정 로그인·접속기록이 항상 켜진다(첫 계정: `python -m app.manage create-staff`). 원장 결재 전에는 합성 자료로만 시험한다.
 
 **합성 시연 전용이며 재시작하면 입력이 초기화된다.** 실제 자료 입력·인증·영구 DB 저장·접속/감사기록·LAN 운영은 정식 앱에서 구현할 후속 범위다. 아래는 최초 Phase 0 설계 기록이며 오늘 시연을 위해 모든 문서를 먼저 검토할 필요는 없다. [17열 Excel 프로토타입](docs/excel-prototype.md)도 유지한다.
 

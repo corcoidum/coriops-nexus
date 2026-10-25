@@ -9,5 +9,5 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 RUN pip install --no-cache-dir '.[test]'
 COPY tests ./tests
-COPY docker-compose.prototype.yml ./
+COPY docker-compose.prototype.yml docker-compose.ledger.yml ./
 CMD ["python", "-m", "pytest", "-q"]

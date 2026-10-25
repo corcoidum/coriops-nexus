@@ -40,7 +40,7 @@
 ### 처음 계정 만들기 (원장 = 원장 + 개인정보 책임자)
 
 ```sh
-docker compose -f docker-compose.prototype.yml --profile ledger run --rm ledger \
+docker compose -f docker-compose.ledger.yml run --rm ledger \
   python -m app.manage create-staff --username wonjang --display-name 원장 --roles DOCTOR,PRIVACY_OFFICER
 ```
 
@@ -94,10 +94,10 @@ docker compose -f docker-compose.prototype.yml --profile ledger run --rm ledger 
 2. 실행한다. 처음 시작할 때 Alembic이 DB 테이블을 만든다.
 
 ```sh
-docker compose -f docker-compose.prototype.yml --profile ledger up -d --build
+docker compose -f docker-compose.ledger.yml up -d --build
 ```
 
-브라우저: <http://127.0.0.1:8766/dashboard> (이 PC에서만 접속). 중지: `docker compose -f docker-compose.prototype.yml --profile ledger stop`
+브라우저: <http://127.0.0.1:8766/dashboard> (이 PC에서만 접속). 중지: `docker compose -f docker-compose.ledger.yml stop`
 
 DB 자료는 Docker 볼륨 `ledger-data`에 남는다. `down -v`는 볼륨을 지우므로 쓰지 않는다. 백업은 [백업 초안](privacy/backup-recovery.md)을 따른다.
 
@@ -117,10 +117,10 @@ DB 자료는 Docker 볼륨 `ledger-data`에 남는다. `down -v`는 볼륨을 �
 
 ## 검증 — 2026-10-25
 
-- Python 3.12 + PostgreSQL 16: `python -m pytest -q` **266 통과 / 0 실패**(로그인·권한·접속기록 28개, 재검 도래·기간·대상자 출력 12개 포함).
+- Python 3.12 + PostgreSQL 16: `python -m pytest -q` **267 통과 / 0 실패**(로그인·권한·접속기록 28개, 재검 도래·기간·대상자 출력 12개 포함).
 - 실제 서버(`app.ledger_server`, PostgreSQL)와 Chromium으로 다음 순서를 확인했다.
   1. 합성 엑셀(3시트) 미리보기 → 신규 7건 저장
   2. 새 검사 접수
   3. 원장 지시 대기 2건 일괄 재검 불필요
   4. 지정 폴더 출력(1개 파일, 3시트)
-- 이 작업 환경에는 Docker 데몬이 없어 `--profile ledger` 컨테이너 실행은 하지 못했다. compose 구성은 시험으로 검사한다(DB 포트 비공개, 출력 폴더만 연결, 비밀번호는 `.env`에서만).
+- 이 작업 환경에는 Docker 데몬이 없어 `docker-compose.ledger.yml` 컨테이너 실행은 하지 못했다. compose 구성은 시험으로 검사한다(DB 포트 비공개, 출력 폴더만 연결, 비밀번호는 `.env`에서만).
