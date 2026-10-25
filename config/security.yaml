@@ -7,6 +7,19 @@ authentication:
   idle_timeout_minutes: 15
   cookies: {secure: true, httponly: true, samesite: Strict}
   csrf: synchronizer_token_and_origin_check
+  session_absolute_hours: 12
+  # [가정] Q01 확정 전 역할별 권한 초안. PRIVACY_OFFICER만으로는 장부를 볼 수 없다(별도 업무 역할 필요).
+  permissions:
+    ledger.view: [NURSE, ADMIN, DOCTOR]
+    ledger.register: [NURSE, ADMIN, DOCTOR]
+    ledger.handoff: [NURSE, ADMIN, DOCTOR]
+    ledger.result: [ADMIN, DOCTOR]
+    ledger.decide: [DOCTOR, ADMIN]   # ADMIN은 원장 지시의 대리 입력
+    ledger.followup: [NURSE, ADMIN, DOCTOR]
+    excel.import: [ADMIN, DOCTOR]
+    excel.export: [ADMIN, DOCTOR]
+    privacy.logs: [PRIVACY_OFFICER]
+    admin.staff: [PRIVACY_OFFICER]
 network:
   # [가정] 운영 값 아님. 프록시 신뢰 대역과 PC 허용 대역은 별개다.
   allowed_client_cidrs: ['192.168.0.0/24']

@@ -10,7 +10,7 @@ docker compose -f docker-compose.prototype.yml --profile dashboard up -d --build
 
 브라우저: <http://127.0.0.1:8765/dashboard> · [대시보드 사용법](docs/manual-dashboard.md) · [내부 보안 유지 제안](docs/privacy/internal-security-proposal.md)
 
-**DB 저장 장부(A13):** 입력은 앱에서 하고 PostgreSQL이 원본이다. 기존 엑셀(Biopsy·CLO·Stool)은 가져오기·대조에, 엑셀 출력은 지정 원내 폴더에만 쓴다. `.env` 설정 후 `docker compose -f docker-compose.prototype.yml --profile ledger up -d --build` → <http://127.0.0.1:8766/dashboard> · [장부 앱 사용법](docs/ledger-app.md). 원장 결재·로그인/접속기록 전에는 합성 자료로만 시험한다.
+**DB 저장 장부(A13):** 입력은 앱에서 하고 PostgreSQL이 원본이다. 기존 엑셀(Biopsy·CLO·Stool)은 가져오기·대조에, 엑셀 출력은 지정 원내 폴더에만 쓴다. `.env` 설정 후 `docker compose -f docker-compose.prototype.yml --profile ledger up -d --build` → <http://127.0.0.1:8766/dashboard> · [장부 앱 사용법](docs/ledger-app.md). DB 모드에서는 개인 계정 로그인·접속기록이 항상 켜진다(첫 계정: `python -m app.manage create-staff`). 원장 결재 전에는 합성 자료로만 시험한다.
 
 **합성 시연 전용이며 재시작하면 입력이 초기화된다.** 실제 자료 입력·인증·영구 DB 저장·접속/감사기록·LAN 운영은 정식 앱에서 구현할 후속 범위다. 아래는 최초 Phase 0 설계 기록이며 오늘 시연을 위해 모든 문서를 먼저 검토할 필요는 없다. [17열 Excel 프로토타입](docs/excel-prototype.md)도 유지한다.
 

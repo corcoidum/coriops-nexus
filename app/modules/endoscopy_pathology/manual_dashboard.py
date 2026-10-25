@@ -23,6 +23,7 @@ import yaml
 
 from app.kernel.calendar import ClinicCalendar
 from app.kernel.clock import Clock, SystemClock
+from app.kernel.web import UserError
 
 from .excel_io import (
     Issue, LedgerAppConfig, LedgerReader, ParsedWorkbook, RowDraft, WorkbookError, build_workbook,
@@ -46,11 +47,8 @@ PREVIEW_LIST_MAX = 200
 
 
 
-class DashboardError(Exception):
-    def __init__(self, message: str, status_code: int = 400):
-        self.message = message
-        self.status_code = status_code
-        super().__init__(message)
+class DashboardError(UserError):
+    """장부 업무 오류. 화면 처리는 커널 UserError와 같다."""
 
 
 @dataclass(frozen=True)
@@ -138,6 +136,27 @@ class ManualDashboardService:
     @property
     def max_upload_bytes(self) -> int:
         return self._security.max_upload_bytes
+
+    @property
+    def engine(self):
+        """DB 저장소의 연결. 로그인·접속기록이 같은 DB를 쓴다."""
+        return self._store._engine
+
+    # ---------- 접속기록용 정보주체(차트번호) 조회
+
+    def subject_of(self, entry_id: UUID) -> str:
+        return self._get(entry_id).chart_no
+
+    def subjects_of(self, entry_ids: list[UUID]) -> list[str]:
+        wanted = set(entry_ids)
+        return [e.chart_no for e in self._store.entries() if e.id in wanted]
+
+    def pending_handoff_subjects(self) -> list[str]:
+        return [e.chart_no for e in self._store.entries() if self._stage(e) == "HANDOFF_PENDING"]
+
+    def import_subjects(self, token: str) -> list[str]:
+        with self._lock:
+            return [d.chart_no for d in self._current_preview(token).new_rows]
 
     # ---------- 공통
 
