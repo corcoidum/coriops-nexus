@@ -16,16 +16,16 @@ SYNTHETIC_RECORDS = (
     ("일반검진6종",), ("일반검진9종", "추가b형간염", "추가c형간염"), ("일반검진6종",), ("일반검진9종",),
 )
 SYNTHETIC_ITEMS = (
-    (),
-    (LabItem("합성항목A", "52", "H"), LabItem("합성항목B", "38", None)),
-    (LabItem("합성항목C", "31", "L"),),
-    (LabItem("합성항목A", "48", "H"), LabItem("합성항목D", "61", "H")),
-    (LabItem("합성항목E", "999", "H", critical=True),),
-    (),
-    (LabItem("합성항목F", "<0.5", "L"),),
-    (LabItem("합성항목A", "40", None),),
-    (LabItem("합성항목G", "1.9", "L", critical=True), LabItem("합성항목C", "33", "L")),
-    (LabItem("합성항목B", "280", "H"),),
+    (LabItem("Hb", "13.8"), LabItem("Glu", "92")),
+    (LabItem("AST", "52", "H"), LabItem("ALT", "38")),
+    (LabItem("HDL", "31", "L"), LabItem("TG", "120")),
+    (LabItem("AST", "48", "H"), LabItem("GGT", "61", "H")),
+    (LabItem("Glu", "999", "H", critical=True),),
+    (),  # 결과 미수신 예시: 결과란 빈칸
+    (LabItem("Hb", "9.8", "L"),),
+    (LabItem("CHOL", "180"), LabItem("LDL", "110")),
+    (LabItem("Hb", "5.1", "L", critical=True), LabItem("HDL", "33", "L")),
+    (LabItem("TG", "280", "H"), LabItem("Cr", "0.9")),
 )
 
 

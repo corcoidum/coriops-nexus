@@ -63,6 +63,8 @@ class LabLedgerPolicy:
     freeze_panes: str
     exam_kinds: tuple[str, ...]
     result_flags: tuple[str, ...]
+    normal_label: str
+    item_names: tuple[str, ...]
     columns: tuple[Column, ...]
 
     @property
@@ -107,6 +109,8 @@ def load_policy(path: Path | None = None) -> LabLedgerPolicy:
         data["freeze_panes"],
         tuple(data["exam_kinds"]),
         tuple(data["result_flags"]),
+        data["normal_label"],
+        tuple(data["item_names"]),
         columns,
     )
 
@@ -129,14 +133,20 @@ def new_workbook(policy: LabLedgerPolicy) -> Workbook:
     return workbook
 
 
-def format_result(items: Iterable[LabItem]) -> str | None:
-    """정상범위 항목은 빼고 '항목 값 H/L'을 쉼표로 잇는다. 모두 정상이면 빈칸."""
+def format_result(items: Iterable[LabItem], normal_label: str) -> str | None:
+    """정상범위 항목은 빼고 '항목 값 H/L'을 쉼표로 잇는다.
+
+    결과 항목이 없으면 빈칸(미수신), 모두 정상이면 normal_label을 적는다.
+    """
+    items = tuple(items)
+    if not items:
+        return None
     parts = [
         " ".join(part for part in (item.name, item.value, item.flag) if part)
         for item in items
         if item.flag or item.critical
     ]
-    return ", ".join(parts) or None
+    return ", ".join(parts) or normal_label
 
 
 def _check_text(value: str) -> None:
@@ -178,20 +188,20 @@ def _validate_record(record: LabRecord, policy: LabLedgerPolicy) -> RecordKey:
         if type(item.critical) is not bool:
             raise ValueError("INVALID_CRITICAL_FLAG")
     texts = [record.report_ref, record.chart_no, record.patient_name, record.sex, record.age]
-    texts += [", ".join(record.exam_kinds), format_result(record.items)]
+    texts += [", ".join(record.exam_kinds), format_result(record.items, policy.normal_label)]
     for value in texts:
         if value is not None:
             _check_text(value)
     return record.report_ref, record.chart_no
 
 
-def _cell_value(record: LabRecord, column: Column) -> object:
+def _cell_value(record: LabRecord, column: Column, policy: LabLedgerPolicy) -> object:
     if column.kind == "manual":
         return None
     if column.kind == "exam_kinds":
         return ", ".join(record.exam_kinds) or None
     if column.kind == "lab_result":
-        return format_result(record.items)
+        return format_result(record.items, policy.normal_label)
     return getattr(record, column.field)
 
 
@@ -243,7 +253,7 @@ def merge_records(
         row = sheet.max_row + 1
         critical = any(item.critical for item in record.items)
         for index, column in enumerate(policy.columns, 1):
-            value = _cell_value(record, column)
+            value = _cell_value(record, column, policy)
             cell = sheet.cell(row, index, value)
             cell.font = Font(name="Arial", size=11, color="243746")
             cell.alignment = Alignment(vertical="center", horizontal="left", wrap_text=column.kind == "lab_result")
@@ -255,6 +265,11 @@ def merge_records(
                 cell.number_format = "yyyy-mm-dd"
             if column.kind == "lab_result" and critical:
                 cell.fill = CRITICAL_FILL
+        # 결과란에 실제로 적히는 항목 중 약칭 목록에 없는 이름만 검토한다.
+        if any(
+            item.name not in policy.item_names for item in record.items if item.flag or item.critical
+        ):
+            issues.append(ReviewIssue(row, result_header, "ITEM_NAME_UNREGISTERED"))
         if critical:
             # 원장 보고 대상. 보고 완료 여부는 사람이 대시보드에서 기록한다(L3).
             issues.append(ReviewIssue(row, result_header, "CRITICAL_REPORT"))

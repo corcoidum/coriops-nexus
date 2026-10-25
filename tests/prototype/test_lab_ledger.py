@@ -53,9 +53,9 @@ def synthetic_record(**changes: object) -> LabRecord:
         "entrusted_date": date(2026, 10, 19),
         "report_date": date(2026, 10, 21),
         "items": (
-            LabItem("합성항목A", "52", "H"),
-            LabItem("합성항목B", "38", None),
-            LabItem("합성항목C", "<0.5", "L"),
+            LabItem("AST", "52", "H"),
+            LabItem("ALT", "38", None),
+            LabItem("HDL", "31", "L"),
         ),
     }
     fields.update(changes)
@@ -94,11 +94,31 @@ def test_one_row_holds_whole_patient_result(workbook, policy):
 
 def test_result_lists_only_flagged_items(workbook, policy):
     merge_records(workbook, [synthetic_record()], policy)
-    assert row_values(workbook)["결과란"] == "합성항목A 52 H, 합성항목C <0.5 L"
+    assert row_values(workbook)["결과란"] == "AST 52 H, HDL 31 L"
 
 
-def test_all_normal_leaves_result_blank():
-    assert format_result([LabItem("합성항목B", "38", None)]) is None
+def test_all_normal_writes_normal_label(policy):
+    assert format_result([LabItem("ALT", "38", None)], policy.normal_label) == "정상"
+
+
+def test_no_items_leaves_result_blank(policy):
+    assert format_result([], policy.normal_label) is None
+
+
+def test_all_normal_row_shows_normal(workbook, policy):
+    merge_records(workbook, [synthetic_record(items=(LabItem("ALT", "38"),))], policy)
+    assert row_values(workbook)["결과란"] == "정상"
+
+
+def test_unregistered_item_name_is_written_and_reviewed(workbook, policy):
+    record = synthetic_record(items=(LabItem("SGOT", "52", "H"), LabItem("미등록정상", "1")))
+    result = merge_records(workbook, [record], policy)
+    assert row_values(workbook)["결과란"] == "SGOT 52 H"
+    assert [issue.code for issue in result.issues] == ["ITEM_NAME_UNREGISTERED"]
+
+
+def test_registered_item_names_follow_user_list(policy):
+    assert policy.item_names == ("Hb", "Glu", "CHOL", "TG", "HDL", "LDL", "AST", "ALT", "GGT", "Cr")
 
 
 def test_manual_columns_stay_blank(workbook, policy):
@@ -116,7 +136,7 @@ def test_staff_edits_are_preserved_on_rerun(workbook, policy):
 
 
 def test_critical_value_creates_report_issue_and_highlight(workbook, policy):
-    record = synthetic_record(items=(LabItem("합성항목E", "999", "H", critical=True),))
+    record = synthetic_record(items=(LabItem("Glu", "999", "H", critical=True),))
     result = merge_records(workbook, [record], policy)
     column = HEADERS.index("결과란") + 1
     assert [issue.code for issue in result.issues] == ["CRITICAL_REPORT"]
@@ -131,10 +151,10 @@ def test_non_critical_row_has_no_issue(workbook, policy):
 
 def test_changed_source_is_reviewed_not_overwritten(workbook, policy):
     first = merge_records(workbook, [synthetic_record()], policy)
-    changed = synthetic_record(items=(LabItem("합성항목A", "70", "H"),))
+    changed = synthetic_record(items=(LabItem("AST", "70", "H"),))
     again = merge_records(workbook, [changed], policy, fingerprints=first.fingerprints)
     assert [issue.code for issue in again.issues] == ["SOURCE_CHANGED"]
-    assert row_values(workbook)["결과란"] == "합성항목A 52 H, 합성항목C <0.5 L"
+    assert row_values(workbook)["결과란"] == "AST 52 H, HDL 31 L"
 
 
 def test_existing_row_without_fingerprint_is_reviewed(workbook, policy):
@@ -148,7 +168,7 @@ def test_existing_row_without_fingerprint_is_reviewed(workbook, policy):
     [
         ({"exam_kinds": ("종합검진",)}, "UNKNOWN_EXAM_KIND"),
         ({"exam_kinds": ("일반검진6종", "일반검진6종")}, "DUPLICATE_EXAM_KIND"),
-        ({"items": (LabItem("합성항목A", "52", "HH"),)}, "UNKNOWN_RESULT_FLAG"),
+        ({"items": (LabItem("AST", "52", "HH"),)}, "UNKNOWN_RESULT_FLAG"),
         ({"items": (LabItem("", "52", "H"),)}, "INVALID_ITEM_TEXT"),
         ({"chart_no": " "}, "MISSING_RECORD_KEY_OR_NAME"),
         ({"report_date": "2026-10-21"}, "INVALID_DATE_TYPE"),
@@ -192,7 +212,7 @@ def test_save_never_overwrites(tmp_path, workbook):
 
 def test_record_repr_hides_patient_values():
     assert "테스트수진자A" not in repr(synthetic_record())
-    assert "52" not in repr(LabItem("합성항목A", "52", "H"))
+    assert "52" not in repr(LabItem("AST", "52", "H"))
 
 
 def test_demo_records_are_synthetic_and_idempotent(workbook, policy):
@@ -201,6 +221,7 @@ def test_demo_records_are_synthetic_and_idempotent(workbook, policy):
     first = merge_records(workbook, records, policy)
     again = merge_records(workbook, records, policy, fingerprints=first.fingerprints)
     assert first.appended == 10 and again.appended == 0
+    assert not any(issue.code == "ITEM_NAME_UNREGISTERED" for issue in first.issues)
     assert sum(issue.code == "CRITICAL_REPORT" for issue in first.issues) == 2
 
 
