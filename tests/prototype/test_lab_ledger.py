@@ -212,7 +212,8 @@ def test_save_never_overwrites(tmp_path, workbook):
 
 def test_record_repr_hides_patient_values():
     assert "테스트수진자A" not in repr(synthetic_record())
-    assert "52" not in repr(LabItem("AST", "52", "H"))
+    # 기본 repr의 메모리 주소(16진수)와 겹치지 않도록 점이 들어간 값을 쓴다.
+    assert "52.7" not in repr(LabItem("AST", "52.7", "H"))
 
 
 def test_demo_records_are_synthetic_and_idempotent(workbook, policy):
