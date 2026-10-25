@@ -23,6 +23,7 @@ NOTICES = {
     "bulk": "선택한 건에 원장 지시를 기록했습니다.",
     "imported": "가져오기를 마쳤습니다. 신규 행만 저장했습니다.",
     "exported": "지정 폴더에 엑셀을 저장했습니다.",
+    "followups_exported": "재검 대상자 목록을 지정 폴더에 저장했습니다.",
 }
 
 
@@ -50,10 +51,12 @@ def home():
 
 @router.get("/dashboard")
 def dashboard(request: Request, service: Service, stage: str = "ALL", kind: str = "ALL",
-              selected_id: UUID | None = None, q: str = "", page: int = 1, new: bool = False, notice: str = ""):
-    require(request, "ledger.view")
-    context = service.snapshot(stage=stage, selected_id=selected_id, query=q, kind=kind, page=page)
-    context.update(new=new, notice=NOTICES.get(notice, ""))
+              selected_id: UUID | None = None, q: str = "", page: int = 1, new: bool = False, notice: str = "",
+              due: str = "", due_from: str = "", due_to: str = ""):
+    actor = require(request, "ledger.view")
+    context = service.snapshot(stage=stage, selected_id=selected_id, query=q, kind=kind, page=page, due=due,
+                               due_from=form_date(due_from), due_to=form_date(due_to))
+    context.update(new=new, notice=NOTICES.get(notice, ""), can_export=actor.can("excel.export"))
     # 화면에 나가기 전에 기록한다. 기록이 실패하면 화면도 나가지 않는다.
     audit(request, "LIST", "ledger_list", subjects=[c.chart_no for c in context["cases"]])
     if context["selected"] is not None and not new:
@@ -176,6 +179,18 @@ def export(request: Request, service: Service):
     # 출력은 한 행: 건수와 함께 남기고, 파일명·시각은 출력 기록(ledger_exports)에 있다.
     audit(request, "EXPORT", "excel_export", count=record.row_count)
     return redirect("/ledger/excel", notice="exported")
+
+
+@router.post("/ledger/export/followups", dependencies=[Csrf])
+def export_followups(request: Request, service: Service, kind: Annotated[str, Form()] = "ALL",
+                     q: Annotated[str, Form()] = "", due: Annotated[str, Form()] = "",
+                     due_from: Annotated[str, Form()] = "", due_to: Annotated[str, Form()] = ""):
+    require(request, "excel.export")
+    record, subjects = service.export_followups(kind, q, due, form_date(due_from), form_date(due_to))
+    # 대상자 목록은 이름이 그대로 들어가므로 환자별로 기록한다.
+    audit(request, "EXPORT", "followup_list", subjects=subjects, count=record.row_count)
+    return redirect(stage="FOLLOWUP", kind=kind, q=q, due=due, due_from=due_from, due_to=due_to,
+                    notice="followups_exported")
 
 
 @router.post("/ledger/reset", dependencies=[Csrf])

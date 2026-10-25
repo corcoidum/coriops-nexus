@@ -20,7 +20,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 import yaml
 
-from .ledger_model import KINDS, LedgerEntry
+from .ledger_model import KINDS, KST, LedgerEntry
 from .result_notation import NotationError, ResultCodeBook
 
 
@@ -373,6 +373,26 @@ def _status(entry: LedgerEntry, stage: str) -> str:
             "RESULT_PENDING": "결과 대기", "HANDOFF_PENDING": "인계 대기"}[stage]
 
 
+def _header(sheet, headers) -> None:
+    sheet.append(headers)
+    for index, _ in enumerate(headers, 1):
+        cell = sheet.cell(1, index)
+        cell.fill = PatternFill("solid", fgColor="243746")
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        sheet.column_dimensions[get_column_letter(index)].width = 14
+
+
+def _append(sheet, values) -> None:
+    sheet.append([None if value == "" else value for value in values])
+    for cell in sheet[sheet.max_row]:
+        if isinstance(cell.value, str):
+            # '='로 시작하는 값이 수식으로 실행되지 않게 문자열로 고정한다.
+            cell.data_type = "s"
+        elif isinstance(cell.value, date):
+            cell.number_format = "yyyy.mm.dd"
+
+
 def build_workbook(rows: list[tuple[LedgerEntry, str]], config: LedgerAppConfig, codebook: ResultCodeBook) -> Workbook:
     """DB 사본 엑셀. 종류별 시트, 기존 17열 + 재검 2열. 이 파일을 고쳐 DB로 되돌리지 않는다."""
     workbook = Workbook()
@@ -381,13 +401,7 @@ def build_workbook(rows: list[tuple[LedgerEntry, str]], config: LedgerAppConfig,
     for kind in KINDS:
         sheet = workbook.create_sheet(config.kinds[kind]["sheet_names"][0])
         headers = (LEDGER_HEADERS if kind == "BIOPSY" else SHORT_HEADERS) + followup_headers
-        sheet.append(headers)
-        for index, _ in enumerate(headers, 1):
-            cell = sheet.cell(1, index)
-            cell.fill = PatternFill("solid", fgColor="243746")
-            cell.font = Font(bold=True, color="FFFFFF")
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            sheet.column_dimensions[get_column_letter(index)].width = 14
+        _header(sheet, headers)
         sheet.freeze_panes = "E2"
         for entry, stage in sorted((r for r in rows if r[0].kind == kind), key=lambda r: (r[0].exam_date, r[0].chart_no)):
             common = [entry.exam_date, entry.report_ref, entry.chart_no, entry.patient_name, entry.age, entry.sex,
@@ -398,13 +412,34 @@ def build_workbook(rows: list[tuple[LedgerEntry, str]], config: LedgerAppConfig,
                                    codebook.format_sydney(dict(entry.sydney)), ""]
             else:
                 values = common + [entry.handed_by, entry.received_by, entry.reported_on, entry.result_notation]
-            values += [entry.followup_due, _status(entry, stage)]
-            sheet.append([None if value == "" else value for value in values])
-            for cell in sheet[sheet.max_row]:
-                if isinstance(cell.value, str):
-                    # '='로 시작하는 값이 수식으로 실행되지 않게 문자열로 고정한다.
-                    cell.data_type = "s"
-                elif isinstance(cell.value, date):
-                    cell.number_format = "yyyy.mm.dd"
+            _append(sheet, values + [entry.followup_due, _status(entry, stage)])
         sheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(sheet.max_row, 1)}"
+    return workbook
+
+
+FOLLOWUP_HEADERS = ("재검 예정일", "상태", "장부", "검사종류", "검사일", "차트번호", "수진자명", "나이", "성별",
+                    "결과", "원장 지시일")
+
+
+def build_followup_workbook(rows: list[tuple[LedgerEntry, str]], title: str, kind_labels: dict[str, str]) -> Workbook:
+    """재검 대상자 목록. 화면에서 고른 조건(도래·기간·종류)의 행만, 재검일 순서로 담는다."""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "재검 대상"
+    sheet.append([title])
+    sheet["A1"].font = Font(bold=True)
+    sheet.append([])
+    sheet.append(FOLLOWUP_HEADERS)
+    for index, _ in enumerate(FOLLOWUP_HEADERS, 1):
+        cell = sheet.cell(3, index)
+        cell.fill = PatternFill("solid", fgColor="243746")
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        sheet.column_dimensions[get_column_letter(index)].width = 13
+    sheet.freeze_panes = "A4"
+    for entry, status in rows:
+        _append(sheet, [entry.followup_due, status, kind_labels[entry.kind], entry.procedure_label, entry.exam_date,
+                        entry.chart_no, entry.patient_name, entry.age, entry.sex, entry.result_notation,
+                        entry.decided_at.astimezone(KST).date() if entry.decided_at else None])
+    sheet.auto_filter.ref = f"A3:{get_column_letter(len(FOLLOWUP_HEADERS))}{max(sheet.max_row, 3)}"
     return workbook

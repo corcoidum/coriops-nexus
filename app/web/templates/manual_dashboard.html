@@ -1,6 +1,11 @@
 {% extends "ledger_base.html" %}
-{% macro link(stage=stage, kind=kind, q=query, page=1, selected_id=None, new=False) -%}
-/dashboard?stage={{ stage }}&amp;kind={{ kind }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}{% if page > 1 %}&amp;page={{ page }}{% endif %}{% if selected_id %}&amp;selected_id={{ selected_id }}{% endif %}{% if new %}&amp;new=1{% endif %}
+{# 매크로 기본값에서는 화면 변수를 읽지 못하므로 none이면 본문에서 현재 값으로 채운다. #}
+{% macro link(stage=none, kind=none, q=none, page=1, selected_id=none, new=False, due=none) -%}
+{%- set s = stage if stage is not none else current.stage -%}
+{%- set k = kind if kind is not none else current.kind -%}
+{%- set text = q if q is not none else current.query -%}
+{%- set d = due if due is not none else current.due -%}
+/dashboard?stage={{ s }}&amp;kind={{ k }}{% if text %}&amp;q={{ text|urlencode }}{% endif %}{% if page > 1 %}&amp;page={{ page }}{% endif %}{% if selected_id %}&amp;selected_id={{ selected_id }}{% endif %}{% if new %}&amp;new=1{% endif %}{% if d and s == 'FOLLOWUP' %}&amp;due={{ d }}{% if d == 'range' %}&amp;due_from={{ current.due_from }}&amp;due_to={{ current.due_to }}{% endif %}{% endif %}
 {%- endmacro %}
 {% block content %}
     <div class="page-heading"><div><span class="eyebrow">TODAY'S LEDGER</span><h1>오늘의 조직검체 장부</h1><p>접수 → 인계 → 결과 → 원장 지시 → 재검을 한 화면에서 이어 갑니다.</p></div><a class="button primary" href="{{ link(new=True) }}">＋ 새 검사 접수</a></div>
@@ -32,14 +37,14 @@
 
     <section class="stat-grid" aria-label="업무 단계별 건수">
       {% for key, label in stage_labels.items() %}
-      <a href="{{ link(stage=key) }}" class="stat-card {{ key|lower }} {% if stage == key %}selected{% endif %}" {% if stage == key %}aria-current="page"{% endif %}>
+      <a href="{% if key == 'FOLLOWUP' and flags.followup_due %}{{ link(stage=key, due='due') }}{% else %}{{ link(stage=key, due='') }}{% endif %}" class="stat-card {{ key|lower }} {% if stage == key %}selected{% endif %}" {% if stage == key %}aria-current="page"{% endif %}>
         <div class="stat-top"><span>{{ label }}</span><span class="stat-step">0{{ loop.index }}</span></div>
         <div class="stat-number">{{ counts[key] }}<span>건</span></div>
         <div class="stat-caption">
           {% if key == 'HANDOFF_PENDING' %}{{ pickup.text }}
           {% elif key == 'RESULT_PENDING' %}{% if flags.result_delayed %}<span class="alert-chip danger">지연 {{ flags.result_delayed }}</span>{% else %}{{ delay_days }}진료일 초과 시 지연{% endif %}
           {% elif key == 'DOCTOR_PENDING' %}{% if flags.code_review %}<span class="alert-chip warn">검토 {{ flags.code_review }}</span> {% endif %}{% if flags.imported_pending %}<span class="alert-chip">과거 {{ flags.imported_pending }}</span>{% endif %}{% if not flags.code_review and not flags.imported_pending %}원장이 정한 날짜를 기록{% endif %}
-          {% elif key == 'FOLLOWUP' %}{% if flags.followup_overdue %}<span class="alert-chip danger">경과 {{ flags.followup_overdue }}</span> {% endif %}{% if flags.followup_soon %}<span class="alert-chip warn">{{ window_days }}일 이내 {{ flags.followup_soon }}</span>{% endif %}{% if not flags.followup_overdue and not flags.followup_soon %}임박한 재검 없음{% endif %}
+          {% elif key == 'FOLLOWUP' %}{% if flags.followup_due %}<span class="alert-chip danger">도래 {{ flags.followup_due }}</span> {% endif %}{% if flags.followup_soon %}<span class="alert-chip warn">{{ window_days }}일 이내 {{ flags.followup_soon }}</span>{% endif %}{% if not flags.followup_due and not flags.followup_soon %}임박한 재검 없음{% endif %}
           {% else %}보관 {{ retention.years }}년{% if retention.expired %} · <span class="alert-chip warn">경과 후보 {{ retention.expired }}</span>{% endif %}{% endif %}
         </div>
       </a>
@@ -49,15 +54,35 @@
     <div class="work-grid">
       <section class="panel worklist">
         <div class="panel-header">
-          <div><h2>{% if stage == 'ALL' %}전체 장부{% else %}{{ stage_labels[stage] }}{% endif %}<span class="count-tag">{{ matched }}</span></h2><p>행을 선택하면 오른쪽에서 다음 업무를 기록합니다.</p></div>
+          <div><h2>{% if stage == 'ALL' %}전체 장부{% elif due %}재검 대상 · {{ due_labels[due] }}{% else %}{{ stage_labels[stage] }}{% endif %}<span class="count-tag">{{ matched }}</span></h2><p>{% if due and due_window[1] %}재검일 {% if due_window[0] %}{{ due_window[0].strftime('%Y.%m.%d') }}{% else %}처음{% endif %} ~ {{ due_window[1].strftime('%Y.%m.%d') }}, 재검일 순서{% else %}행을 선택하면 오른쪽에서 다음 업무를 기록합니다.{% endif %}</p></div>
           <form class="search-form" action="/dashboard" method="get" role="search">
-            <input type="hidden" name="stage" value="{{ stage }}"><input type="hidden" name="kind" value="{{ kind }}">
+            <input type="hidden" name="stage" value="{{ stage }}"><input type="hidden" name="kind" value="{{ kind }}">{% if due %}<input type="hidden" name="due" value="{{ due }}">{% if due == 'range' %}<input type="hidden" name="due_from" value="{{ due_from }}"><input type="hidden" name="due_to" value="{{ due_to }}">{% endif %}{% endif %}
             <label class="visually-hidden" for="q">차트번호·이름·접수번호·결과코드 검색</label>
             <input id="q" name="q" maxlength="30" value="{{ query }}" placeholder="차트번호·이름·접수번호·결과코드" autocomplete="off">
             <button class="button secondary" type="submit">검색</button>
             {% if query or stage != 'ALL' or kind != 'ALL' %}<a class="text-link" href="/dashboard">전체</a>{% endif %}
           </form>
         </div>
+        {% if stage == 'FOLLOWUP' %}
+        <div class="due-bar">
+          <nav class="due-tabs" aria-label="재검 기간">
+            {% for key, label in due_labels.items() if key != 'range' %}<a class="{% if due == key %}active{% endif %}" href="{{ link(due=key) }}">{{ label }}{% if key == 'due' and flags.followup_due %} <strong>{{ flags.followup_due }}</strong>{% endif %}</a>{% endfor %}
+          </nav>
+          <form class="due-range" action="/dashboard" method="get">
+            <input type="hidden" name="stage" value="FOLLOWUP"><input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="due" value="range">{% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+            <label class="visually-hidden" for="due_from">시작일</label><input type="date" id="due_from" name="due_from" required value="{{ due_from or '' }}">
+            <span>~</span>
+            <label class="visually-hidden" for="due_to">종료일</label><input type="date" id="due_to" name="due_to" required value="{{ due_to or '' }}">
+            <button class="button secondary {% if due == 'range' %}active{% endif %}" type="submit">기간 보기</button>
+          </form>
+          {% if can_export and export_ready and matched %}
+          <form action="/ledger/export/followups" method="post" class="due-export">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="q" value="{{ query }}"><input type="hidden" name="due" value="{{ due }}"><input type="hidden" name="due_from" value="{{ due_from or '' }}"><input type="hidden" name="due_to" value="{{ due_to or '' }}">
+            <button class="button primary" type="submit">이 목록 엑셀 저장 ({{ matched }}명)</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endif %}
         {% set bulk = stage == 'DOCTOR_PENDING' and cases %}
         {% if bulk %}
         <form id="bulk-form" class="bulk-bar" action="/ledger/bulk-decide" method="post">

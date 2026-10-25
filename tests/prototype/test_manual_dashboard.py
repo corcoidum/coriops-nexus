@@ -100,7 +100,7 @@ def test_seed_has_fourteen_independent_cases_in_every_stage(app):
         "HANDOFF_PENDING": 2, "RESULT_PENDING": 4, "DOCTOR_PENDING": 3, "FOLLOWUP": 3, "CLOSED": 2,
     }
     assert first["flags"] == {"result_delayed": 1, "code_review": 1, "imported_pending": 0,
-                              "followup_overdue": 1, "followup_soon": 1}
+                              "followup_due": 1, "followup_overdue": 1, "followup_soon": 1}
     assert {case.kind for case in first["cases"]} == {"BIOPSY", "CLO", "STOOL"}
     assert snapshot(second_app)["counts"] == first["counts"]
     assert app.state.dashboard_service is not second_app.state.dashboard_service
@@ -564,3 +564,16 @@ def test_long_lists_are_paginated(app):
     first = snapshot(app, stage="RESULT_PENDING")
     second = snapshot(app, stage="RESULT_PENDING", page=2)
     assert (first["pages"], len(first["cases"]), len(second["cases"])) == (2, 50, first["matched"] - 50)
+
+
+def test_links_on_the_page_keep_the_current_view_and_open(client):
+    """화면의 종류 탭·행 링크를 실제로 따라가 본다(빈 stage로 422가 나던 회귀 방지)."""
+    import html
+    import re
+
+    page = client.get("/dashboard?stage=RESULT_PENDING&kind=BIOPSY").text
+    links = {html.unescape(h) for h in re.findall(r'href="(/dashboard\?[^"]+)"', page)}
+    assert "/dashboard?stage=RESULT_PENDING&kind=CLO" in links
+    assert any("stage=RESULT_PENDING&kind=BIOPSY&selected_id=" in h for h in links)
+    for href in links:
+        assert client.get(href).status_code == 200, href

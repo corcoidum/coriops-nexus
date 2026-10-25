@@ -26,7 +26,8 @@ from app.kernel.clock import Clock, SystemClock
 from app.kernel.web import UserError
 
 from .excel_io import (
-    Issue, LedgerAppConfig, LedgerReader, ParsedWorkbook, RowDraft, WorkbookError, build_workbook,
+    Issue, LedgerAppConfig, LedgerReader, ParsedWorkbook, RowDraft, WorkbookError, build_followup_workbook,
+    build_workbook,
 )
 from .ledger import save_new_workbook
 from .ledger_db import ConcurrentUpdate, LedgerStore, MemoryStore, replace_entry
@@ -44,6 +45,10 @@ SEARCH_MAX = 30
 PAGE_SIZE = 50
 BULK_MAX = 200
 PREVIEW_LIST_MAX = 200
+# 재검 대상 기간 필터. 'due'는 재검일이 오늘이거나 지난 사람(도래)이다.
+DUE_FILTERS = {"": "전체", "due": "재검 도래", "week": "이번 주", "month": "이번 달", "30d": "30일 이내",
+               "range": "기간 지정"}
+DUE_RANGE_MAX_DAYS = 732
 
 
 
@@ -210,6 +215,8 @@ class ManualDashboardService:
             left = (entry.followup_due - today).days
             if left < 0:
                 return Alert(f"재검 기한 {-left}일 경과", "danger")
+            if left == 0:
+                return Alert("재검일 오늘", "danger")
             return Alert(f"재검 D-{left}", "warn" if left <= self._policy.followup_window_days else "normal")
         return Alert("재검 완료" if entry.followup_done_on else "재검 불필요", "normal")
 
@@ -259,9 +266,45 @@ class ManualDashboardService:
         expired = [e for e in entries if e.closed_on and _years_after(e.closed_on, years) < today]
         return {"years": years, "status": self._security.retention_status, "expired": len(expired)}
 
+    @staticmethod
+    def due_window(due: str, today: date, due_from: date | None = None,
+                   due_to: date | None = None) -> tuple[date | None, date | None]:
+        """재검일 필터의 시작·끝(둘 다 포함). None은 제한 없음."""
+        if due not in DUE_FILTERS:
+            raise DashboardError("알 수 없는 재검 기간입니다.", 422)
+        if due == "due":
+            return None, today
+        if due == "week":
+            monday = today - timedelta(days=today.weekday())
+            return monday, monday + timedelta(days=6)
+        if due == "month":
+            first = today.replace(day=1)
+            following = (first + timedelta(days=32)).replace(day=1)
+            return first, following - timedelta(days=1)
+        if due == "30d":
+            return today, today + timedelta(days=30)
+        if due == "range":
+            if due_from is None or due_to is None or due_to < due_from:
+                raise DashboardError("기간의 시작일과 종료일을 확인해 주세요.", 422)
+            if (due_to - due_from).days > DUE_RANGE_MAX_DAYS:
+                raise DashboardError("기간은 2년 이내로 지정해 주세요.", 422)
+            return due_from, due_to
+        return None, None
+
+    def _followups(self, stored: list[LedgerEntry], kind: str, query: str, window) -> list[LedgerEntry]:
+        """조건에 맞는 재검 예정 행을 재검일·차트번호 순서로."""
+        start, end = window
+        rows = [e for e in stored if self._stage(e) == "FOLLOWUP" and (kind == "ALL" or e.kind == kind)
+                and (start is None or e.followup_due >= start) and (end is None or e.followup_due <= end)
+                and self._matches(e, query)]
+        return sorted(rows, key=lambda e: (e.followup_due, e.chart_no))
+
     def snapshot(self, stage: str = "ALL", selected_id: UUID | None = None, query: str = "",
-                 kind: str = "ALL", page: int = 1) -> dict:
+                 kind: str = "ALL", page: int = 1, due: str = "", due_from: date | None = None,
+                 due_to: date | None = None) -> dict:
         with self._lock:
+            if due:
+                stage = "FOLLOWUP"  # 기간 필터는 재검 대상에만 적용한다
             if stage != "ALL" and stage not in STAGE_LABELS:
                 raise DashboardError("알 수 없는 업무 분류입니다.", 422)
             if kind != "ALL" and kind not in KINDS:
@@ -287,10 +330,15 @@ class ManualDashboardService:
                 "result_delayed": count("RESULT_PENDING", lambda e: alerts[e.id].level == "danger"),
                 "code_review": count("DOCTOR_PENDING", lambda e: e.needs_review),
                 "imported_pending": count("DOCTOR_PENDING", lambda e: e.source == "IMPORT"),
-                "followup_overdue": count("FOLLOWUP", lambda e: alerts[e.id].level == "danger"),
+                "followup_due": count("FOLLOWUP", lambda e: e.followup_due <= today),
+                "followup_overdue": count("FOLLOWUP", lambda e: e.followup_due < today),
                 "followup_soon": count("FOLLOWUP", lambda e: alerts[e.id].level == "warn"),
             }
-            matched = [e for e in scoped if (stage == "ALL" or stages[e.id] == stage) and self._matches(e, query)]
+            window = self.due_window(due, today, due_from, due_to)
+            if due:
+                matched = self._followups(stored, kind, query, window)
+            else:
+                matched = [e for e in scoped if (stage == "ALL" or stages[e.id] == stage) and self._matches(e, query)]
             pages = max(1, -(-len(matched) // PAGE_SIZE))
             page = min(max(page, 1), pages)
             cases = matched[(page - 1) * PAGE_SIZE: page * PAGE_SIZE]
@@ -314,6 +362,11 @@ class ManualDashboardService:
                 "window_days": self._policy.followup_window_days,
                 "retention": self._retention(stored, today), "persistent": self.persistent,
                 "export_ready": bool(self._export_dir), "exports": self._store.exports()[-3:][::-1],
+                "due": due, "due_from": due_from, "due_to": due_to, "due_window": window, "due_labels": DUE_FILTERS,
+                # 화면 링크가 현재 조건을 이어받는 데 쓴다(템플릿 매크로 기본값은 화면 변수를 못 읽는다).
+                "current": {"stage": stage, "kind": kind, "query": query, "due": due,
+                            "due_from": due_from.isoformat() if due_from else "",
+                            "due_to": due_to.isoformat() if due_to else ""},
             }
 
     # ---------- 접수·인계·결과·지시
@@ -606,6 +659,38 @@ class ManualDashboardService:
             record = ExportRecord(uuid4(), now, name, len(stored))
             self._write(export=record)
             return record
+
+    def export_followups(self, kind: str = "ALL", query: str = "", due: str = "", due_from: date | None = None,
+                         due_to: date | None = None) -> tuple[ExportRecord, list[str]]:
+        """화면의 재검 대상 조건 그대로 대상자 목록만 지정 폴더에 저장한다. (기록, 차트번호들)"""
+        with self._lock:
+            if kind != "ALL" and kind not in KINDS:
+                raise DashboardError("알 수 없는 검사 종류입니다.", 422)
+            query = query.strip()[:SEARCH_MAX]
+            folder = self._export_folder()
+            now = self._clock.now()
+            today = now.astimezone(KST).date()
+            window = self.due_window(due, today, due_from, due_to)
+            rows = self._followups(self._store.entries(), kind, query, window)
+            if not rows:
+                raise DashboardError("조건에 맞는 재검 대상자가 없습니다.", 422)
+            pickup = {"text": "", "level": "normal"}
+            labels = {k: self._config.kinds[k]["label"] for k in KINDS}
+            start, end = window
+            period = "전체 기간" if start is None and end is None else \
+                f"{start.isoformat() if start else '처음'} ~ {end.isoformat() if end else '끝'}"
+            title = (f"재검 대상자 · {DUE_FILTERS[due]} · {period} · {labels.get(kind, '전체 장부')}"
+                     f" · {len(rows)}명 · 출력 {now.astimezone(KST):%Y-%m-%d %H:%M}")
+            workbook = build_followup_workbook(
+                [(e, self._alert(e, "FOLLOWUP", today, pickup).text) for e in rows], title, labels)
+            name = f"재검대상_{now.astimezone(KST):%Y%m%d_%H%M%S}.xlsx"
+            try:
+                save_new_workbook(workbook, folder / name)
+            except FileExistsError:
+                raise DashboardError("같은 이름의 파일이 있습니다. 잠시 뒤 다시 출력해 주세요.", 409) from None
+            record = ExportRecord(uuid4(), now, name, len(rows))
+            self._write(export=record)
+            return record, [e.chart_no for e in rows]
 
     # ---------- 시연 초기화
 
