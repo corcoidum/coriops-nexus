@@ -1260,3 +1260,24 @@ input:focus,select:focus {
   padding:1px 7px;
   margin-left:6px;
 }
+
+/* 혈액검체 탭 */
+.stat-grid.four {
+  grid-template-columns:repeat(4,minmax(0,1fr));
+}
+
+.stage-pill.critical_pending {
+  background:#fdecea;
+  color:#b33a31;
+  font-weight:600;
+}
+
+.critical-row td:first-child {
+  box-shadow:inset 3px 0 0 #c8463d;
+}
+
+@media(max-width:1150px) {
+  .stat-grid.four {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}

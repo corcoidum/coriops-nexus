@@ -16,6 +16,7 @@
   <a class="nav-item {% if nav == '/dashboard' and stage == 'FOLLOWUP' and due == 'due' %}active{% endif %}" href="/dashboard?stage=FOLLOWUP&amp;due=due"><span aria-hidden="true">⚑</span> 재검 도래{% if flags is defined and flags.followup_due %} <span class="nav-badge">{{ flags.followup_due }}</span>{% endif %}</a>
   <a class="nav-item {% if nav == '/dashboard' and stage == 'FOLLOWUP' and due != 'due' %}active{% endif %}" href="/dashboard?stage=FOLLOWUP"><span aria-hidden="true">◷</span> 재검 대상</a>
   <a class="nav-item {% if nav == '/ledger/excel' %}active{% endif %}" href="/ledger/excel"><span aria-hidden="true">⇅</span> 엑셀 가져오기·출력</a>
+  {% if request.app.state.lab_service %}<a class="nav-item {% if nav == '/lab' %}active{% endif %}" href="/lab"><span aria-hidden="true">◉</span> 혈액검체 장부</a>{% endif %}
   {% endif %}
   {% if auth_enabled and actor and (actor.can('admin.staff') or actor.can('privacy.logs')) %}
   <div class="sidebar-section">PRIVACY</div>
@@ -41,7 +42,7 @@
     {% endif %}{% endif %}
     {% if notice %}<div class="notice" role="status">✓ {{ notice }}</div>{% endif %}
 {% block content %}{% endblock %}
-    <footer class="page-footer"><span>CoriOps Nexus <span class="footer-dot">·</span> 조직검체 장부</span><span>접수 → 인계 → 결과 → 원장 지시 → 재검</span></footer>
+    <footer class="page-footer">{% block footer %}<span>CoriOps Nexus <span class="footer-dot">·</span> 조직검체 장부</span><span>접수 → 인계 → 결과 → 원장 지시 → 재검</span>{% endblock %}</footer>
   </div>
 </main>
 </body>

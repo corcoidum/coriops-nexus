@@ -385,3 +385,14 @@ def test_memory_demo_keeps_working_without_login():
         assert client.get("/dashboard").status_code == 200
         assert client.get("/admin/staff").status_code == 404
         assert client.get("/login", follow_redirects=False).headers["location"] == "/dashboard"
+
+
+def test_lab_demo_tab_is_not_mounted_in_db_mode(parts):
+    # 혈액검체 탭은 저장소가 없는 합성 시연이므로 DB 모드에서는 화면·메뉴가 없어야 한다.
+    app, auth, _, _ = parts
+    assert app.state.lab_service is None
+    make_staff(auth, "admin1", ["ADMIN"])
+    with client_for(app) as client:
+        login(client, "admin1")
+        assert 'href="/lab"' not in client.get("/dashboard").text
+        assert client.get("/lab").status_code == 404

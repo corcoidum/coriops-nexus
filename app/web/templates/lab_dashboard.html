@@ -1,0 +1,84 @@
+{% extends "ledger_base.html" %}
+{% macro link(stage, selected_id=none) -%}
+/lab?stage={{ stage }}{% if selected_id %}&amp;selected_id={{ selected_id }}{% endif %}
+{%- endmacro %}
+{% block crumb %}혈액검체 장부{% endblock %}
+{% block footer %}<span>CoriOps Nexus <span class="footer-dot">·</span> 혈액검체 장부 (합성 시연)</span><span>씨젠 결과 → 위급치 원장 보고 → 직원 확인</span>{% endblock %}
+{% block content %}
+    <div class="demo-banner"><strong>합성 자료로 눌러보세요.</strong><span>혈액검체 탭은 아직 저장하지 않는 시연입니다. 실제 결과를 입력하지 않습니다.</span>
+      <form action="/lab/reset" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" type="submit">↻ 시연 처음부터</button></form></div>
+    <div class="page-heading"><div><span class="eyebrow">SCREENING LAB</span><h1>검진 혈액검체 장부</h1><p>씨젠 결과 → 위급치 원장 보고 → 직원 확인을 한 화면에서 이어 갑니다.</p></div></div>
+
+    <section class="stat-grid four" aria-label="업무 단계별 건수">
+      {% for key, label in stage_labels.items() %}
+      <a href="{{ link(key) }}" class="stat-card {{ key|lower }} {% if stage == key %}selected{% endif %}" {% if stage == key %}aria-current="page"{% endif %}>
+        <div class="stat-top"><span>{{ label }}</span><span class="stat-step">0{{ loop.index }}</span></div>
+        <div class="stat-number">{{ counts[key] }}<span>건</span></div>
+        <div class="stat-caption">
+          {% if key == 'CRITICAL_PENDING' %}{% if counts[key] %}<span class="alert-chip danger">위급치 {{ counts[key] }}</span>{% else %}보고할 위급치 없음{% endif %}
+          {% elif key == 'RESULT_PENDING' %}씨젠 결과 공개 전
+          {% elif key == 'CHECK_PENDING' %}결과란 확인 후 기록
+          {% else %}확인자·시각 기록됨{% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </section>
+
+    <div class="work-grid">
+      <section class="panel worklist">
+        <div class="panel-header">
+          <div><h2>{% if stage == 'ALL' %}전체 장부{% else %}{{ stage_labels[stage] }}{% endif %}<span class="count-tag">{{ cases|length }}</span></h2><p>행을 선택하면 오른쪽에서 다음 업무를 기록합니다.</p></div>
+          {% if stage != 'ALL' %}<a class="text-link" href="/lab">전체</a>{% endif %}
+        </div>
+        <div class="table-scroll"><table><thead><tr><th scope="col">대상</th><th scope="col">검사종류</th><th scope="col">진행 상태</th><th scope="col">결과란</th><th scope="col">다음 업무</th></tr></thead><tbody>
+        {% for case in cases %}
+          <tr class="{% if selected and case.id == selected.id %}selected-row{% endif %} {% if case.critical %}critical-row{% endif %}">
+            <td><a class="patient-link" href="{{ link(stage, case.id) }}">{{ case.display_name }}</a><span class="cell-sub">{{ case.record.chart_no }} · {{ case.record.report_ref }}</span></td>
+            <td><span>{{ case.record.exam_kinds|join(', ') }}</span>{% if case.record.received_date %}<span class="cell-sub">접수 {{ case.record.received_date.strftime('%Y.%m.%d') }}</span>{% endif %}</td>
+            <td><span class="stage-pill {{ case.stage|lower }}">{{ stage_labels[case.stage] }}</span>{% if case.critical %}<span class="cell-sub alert-text danger">위급치</span>{% endif %}</td>
+            <td>{% if results[case.id] %}<span class="finding-text">{{ results[case.id] }}</span>{% else %}<span class="cell-sub">—</span>{% endif %}</td>
+            <td><a class="row-action" href="{{ link(stage, case.id) }}">{{ stage_actions[case.stage] }} <span aria-hidden="true">›</span></a></td>
+          </tr>
+        {% else %}<tr><td colspan="5" class="empty-state">조건에 맞는 업무가 없습니다.</td></tr>{% endfor %}
+        </tbody></table></div>
+        <div class="table-footer"><span>{{ cases|length }}건 · 전체 {{ total }}건</span><span>H/L·위급치는 씨젠 표시 그대로이며 해석은 원장이 합니다.</span></div>
+      </section>
+
+      <section class="panel detail" aria-labelledby="detail-title">
+      {% if selected %}{% set sel = selected.stage %}{% set r = selected.record %}
+        <div class="detail-header"><span class="eyebrow">NEXT ACTION</span><h2 id="detail-title">{{ stage_actions[sel] }}</h2><div class="detail-person">{{ r.patient_name }}<span>{{ r.chart_no }} · {{ r.sex or '-' }} · {{ r.age or '-' }}세</span></div></div>
+        <div class="detail-body">
+          <dl class="result-preview">
+            <div><dt>접수번호</dt><dd>{{ r.report_ref }}</dd></div>
+            <div><dt>검사종류</dt><dd>{{ r.exam_kinds|join(', ') or '—' }}</dd></div>
+            {% if r.entrusted_date %}<div><dt>위탁일</dt><dd>{{ r.entrusted_date.strftime('%Y.%m.%d') }}</dd></div>{% endif %}
+            {% if r.report_date and r.items %}<div><dt>결과보고일</dt><dd>{{ r.report_date.strftime('%Y.%m.%d') }}</dd></div>{% endif %}
+            <div><dt>결과란</dt><dd>{% if results[selected.id] %}<span class="finding-text">{{ results[selected.id] }}</span>{% else %}미수신{% endif %}</dd></div>
+          </dl>
+          {% if sel == 'RESULT_PENDING' %}
+          <p class="form-intro">씨젠에 결과가 공개되면 결과 파일 가져오기(다음 단계 L4)로 채워집니다. 지금은 기다리는 상태만 보여줍니다.</p>
+          {% elif sel == 'CRITICAL_PENDING' %}
+          <p class="alert-chip danger">씨젠 위급치 표시 · 원장 보고 필요</p>
+          <p class="form-intro">원장님께 보고한 뒤 보고한 직원을 기록합니다. 원장 지시 내용은 여기에 적지 않습니다.</p>
+          <form action="/lab/cases/{{ selected.id }}/report-critical" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="reported_by">보고한 직원 <span class="required">필수</span></label><input id="reported_by" name="reported_by" maxlength="20" required autocomplete="off">
+            <button class="button primary full" type="submit">원장 보고 완료 기록 <span aria-hidden="true">→</span></button>
+          </form>
+          {% else %}
+          {% if selected.critical_reported_at %}<div class="decision-box"><span>원장 보고</span><strong>{{ selected.critical_reported_by }}</strong><p>{{ selected.critical_reported_at.astimezone(kst).strftime('%Y.%m.%d %H:%M') }} 보고</p></div>{% endif %}
+          {% if sel == 'CHECK_PENDING' %}
+          <p class="form-intro">결과란을 장부와 대조한 뒤 확인한 직원을 기록합니다.</p>
+          <form action="/lab/cases/{{ selected.id }}/check" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="checked_by">확인한 직원 <span class="required">필수</span></label><input id="checked_by" name="checked_by" maxlength="20" required autocomplete="off">
+            <button class="button primary full" type="submit">확인 완료 기록 <span aria-hidden="true">→</span></button>
+          </form>
+          {% else %}
+          <div class="complete-note"><strong>✓ 확인된 기록입니다.</strong><p>{{ selected.checked_by }} · {{ selected.checked_at.astimezone(kst).strftime('%Y.%m.%d %H:%M') }}</p></div>
+          {% endif %}{% endif %}
+        </div>
+      {% else %}<div class="detail-body empty-state"><h2 id="detail-title">남은 업무가 없습니다</h2><a href="/lab">전체 보기</a></div>{% endif %}
+      </section>
+    </div>
+{% endblock %}
