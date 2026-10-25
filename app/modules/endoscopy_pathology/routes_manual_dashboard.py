@@ -103,8 +103,8 @@ def receive(request: Request, entry_id: UUID, service: Service, report_ref: Anno
 @router.post("/ledger/cases/{entry_id}/decide", dependencies=[Csrf])
 def decide(request: Request, entry_id: UUID, service: Service, mode: Annotated[str, Form()] = "",
            due_date: Annotated[str, Form()] = "", reason: Annotated[str, Form()] = ""):
-    require(request, "ledger.decide")
-    service.decide(entry_id, mode, form_date(due_date), reason)
+    actor = require(request, "ledger.decide")
+    service.decide(entry_id, mode, form_date(due_date), reason, actor=actor.label)
     audit(request, "UPDATE", "ledger_decision", subjects=[service.subject_of(entry_id)])
     return redirect(selected_id=entry_id)
 
@@ -112,16 +112,16 @@ def decide(request: Request, entry_id: UUID, service: Service, mode: Annotated[s
 @router.post("/ledger/bulk-decide", dependencies=[Csrf])
 def bulk_decide(request: Request, service: Service, entry_ids: Annotated[list[UUID], Form()] = (),
                 reason: Annotated[str, Form()] = ""):
-    require(request, "ledger.decide")
-    count = service.bulk_not_required(list(entry_ids), reason)
+    actor = require(request, "ledger.decide")
+    count = service.bulk_not_required(list(entry_ids), reason, actor=actor.label)
     audit(request, "UPDATE", "ledger_decision_bulk", subjects=service.subjects_of(list(entry_ids)), count=count)
     return redirect(stage="DOCTOR_PENDING", notice="bulk")
 
 
 @router.post("/ledger/cases/{entry_id}/followup-done", dependencies=[Csrf])
 def followup_done(request: Request, entry_id: UUID, service: Service, done_on: Annotated[str, Form()] = ""):
-    require(request, "ledger.followup")
-    service.complete_followup(entry_id, form_date(done_on))
+    actor = require(request, "ledger.followup")
+    service.complete_followup(entry_id, form_date(done_on), actor=actor.label)
     audit(request, "UPDATE", "ledger_followup", subjects=[service.subject_of(entry_id)])
     return redirect(selected_id=entry_id)
 

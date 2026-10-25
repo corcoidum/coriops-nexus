@@ -113,9 +113,43 @@ DB 자료는 Docker 볼륨 `ledger-data`에 남는다. `down -v`는 볼륨을 �
 | `app/kernel/auth.py`·`access_log.py`·`routes_auth.py` | 로그인·세션·권한·계정 관리, 추가 전용 해시 체인 접속기록·점검 |
 | `app/manage.py` | 오프라인 초기 계정 생성 |
 
-`ledger_entries`는 전환기 테이블이다. Stage A-2에서 `ontology/coriops.yaml` v0.2의 Patient·Exam·Specimen·ExamResult·DoctorReview·FollowUp 테이블로 옮긴다(A14, D11).
+| `app/kernel/patients.py` | 환자 테이블(차트번호당 1명, 이름 충돌 거부). 여러 업무 모듈이 함께 쓴다 |
 
-## 검증 — 2026-10-25
+### 테이블 (Stage A-2, A14)
+
+검사 1건을 `patients`·`exams`·`specimens`·`exam_results`·`doctor_reviews`·`followups`에 나눠 저장한다. 서비스는 이전처럼 한 줄(`LedgerEntry`)로 읽고, 저장소가 테이블별 행으로 나누고 다시 조립한다. 단계는 저장하지 않고 어느 테이블에 행이 있는지로 계산한다. 정식 정의와 그림은 [데이터 사전](ontology.md)·[ERD](erd.md)·[단계](state-machine.md).
+
+- 원장 지시·재검 완료를 기록한 계정(`decided_by`·`done_by`)을 새로 남긴다. Stage A 이전 자료는 비어 있다(추측해서 채우지 않음).
+- 성별·나이는 장부 행마다 적힌 값을 그대로 둔다(같은 환자의 다른 행으로 채우거나 맞추지 않음).
+
+### 테이블 분리 이전 (Alembic 0003)
+
+서버를 시작하면 `ledger_entries`를 새 테이블로 옮긴다.
+
+1. **사전 점검:** 아래가 하나라도 있으면 아무것도 바꾸지 않고 멈춘다. 오류에는 건수만 나오고 차트번호·이름은 나오지 않는다.
+   - 같은 차트번호에 이름이 둘 이상
+   - 원장 지시 없이 재검 날짜·사유·완료일이 있는 행
+   - 재검 날짜 없이 완료일이 있는 행
+   - 성별이 M·F·빈칸이 아닌 행
+2. **정리 방법:** 원내 PC에서 개인정보 책임자가 DB에 직접 접속해 해당 행을 확인하고, 원본 수기 장부와 대조해 고친 뒤 서버를 다시 시작한다. 차트번호·이름을 채팅·이슈·외부 AI로 보내지 않는다(AGENTS.md 절대 규칙 1).
+3. **검증:** 옮긴 뒤 새 테이블로 다시 조립한 값과 기존 행을 모든 열에서 비교한다. 한 줄이라도 다르면 전체를 되돌린다.
+4. **이전 사본:** 기존 테이블은 `ledger_entries_legacy`로 이름만 바뀌어 남는다. 이후 기록은 반영되지 않는 이전 시점 사본이며, 환자 이름이 들어 있으므로 다음 리비전에서 지운다(보관기간 관리 대상에 넣지 않기 위함).
+5. **되돌리기:** `alembic downgrade 0002_auth_access_logs`는 새 테이블에서 `ledger_entries`를 다시 만든다. 이때 기록자 열은 버려진다.
+
+## 검증 — 2026-10-25 (Stage A-2)
+
+- Python 3.12 + PostgreSQL 16: `python -m pytest -q` **299 통과 / 0 실패**.
+  - 데이터 이전 시험 7개
+    - 합성 장부 9건(5단계·3종류·같은 환자 2건)으로 upgrade → downgrade → upgrade 후 모든 값이 같다.
+    - 분리 뒤 기록한 원장 지시가 downgrade에 반영된다.
+    - 문제 행 3종이 있으면 이전이 멈추고 원래 상태가 그대로다.
+    - 환자 1회 저장·이름 충돌 거부·기록자 보존을 확인한다.
+  - 이전 SQL을 일부러 틀리게 고치면 검증이 "누락 1건, 추가 1건"으로 전체를 되돌리는 것을 확인했다.
+- 실제 서버(`app.ledger_server`)를 0002 상태의 합성 E2E DB로 시작해 0003 이전이 자동으로 적용되는 것을 확인했다.
+- Chromium에서 접수 → 인계(병 수 대조) → 결과 입력 → 원장 지시 → 재검 완료를 진행했다. 화면과 DB에 기록 계정이 남는 것을 확인했다.
+- Docker 컨테이너 실행은 하지 못했다(이 작업 환경에 Docker 없음).
+
+## 검증 — 2026-10-25 (Stage A-2 이전)
 
 - Python 3.12 + PostgreSQL 16: `python -m pytest -q` **267 통과 / 0 실패**(로그인·권한·접속기록 28개, 재검 도래·기간·대상자 출력 12개 포함).
 - 실제 서버(`app.ledger_server`, PostgreSQL)와 Chromium으로 다음 순서를 확인했다.

@@ -460,7 +460,8 @@ class ManualDashboardService:
                 entry, now, report_ref=ref, reported_on=now.astimezone(KST).date(), findings=findings,
                 result_code=result_code, sydney=tuple(sydney.items()), site=site or entry.site, review_codes=())])
 
-    def _decision(self, entry: LedgerEntry, mode: str, due_date: date | None, reason: str, now: datetime):
+    def _decision(self, entry: LedgerEntry, mode: str, due_date: date | None, reason: str, now: datetime,
+                  actor: str | None):
         if self._stage(entry) != "DOCTOR_PENDING":
             raise DashboardError("결과 입력 후 원장 지시를 기록해 주세요.")
         if mode == "required":
@@ -473,13 +474,17 @@ class ManualDashboardService:
         else:
             raise DashboardError("재검 여부를 선택해 주세요.", 422)
         # 재검 간격을 추천하거나 계산하지 않고 입력 날짜만 보관한다.
-        return replace_entry(entry, now, decided_at=now, followup_due=due_date, no_followup_reason=clean_reason)
+        return replace_entry(entry, now, decided_at=now, decided_by=actor, followup_due=due_date,
+                             no_followup_reason=clean_reason)
 
-    def decide(self, entry_id: UUID, mode: str, due_date: date | None = None, reason: str = "") -> None:
+    def decide(self, entry_id: UUID, mode: str, due_date: date | None = None, reason: str = "",
+               actor: str | None = None) -> None:
+        """actor는 기록한 계정 이름이다(원장 본인 또는 대리 입력자)."""
         with self._lock:
-            self._write(updated=[self._decision(self._get(entry_id), mode, due_date, reason, self._clock.now())])
+            self._write(updated=[self._decision(self._get(entry_id), mode, due_date, reason, self._clock.now(),
+                                                actor)])
 
-    def bulk_not_required(self, entry_ids: list[UUID], reason: str) -> int:
+    def bulk_not_required(self, entry_ids: list[UUID], reason: str, actor: str | None = None) -> int:
         """원장이 고른 여러 건에 같은 '재검 불필요' 지시를 한 번에 기록한다. 하나라도 안 되면 전부 취소."""
         with self._lock:
             unique = list(dict.fromkeys(entry_ids))
@@ -489,18 +494,19 @@ class ManualDashboardService:
             if any(i not in stored for i in unique):
                 raise DashboardError("장부 항목을 찾을 수 없습니다.", 404)
             now = self._clock.now()
-            changes = [self._decision(stored[i], "not_required", None, reason, now) for i in unique]
+            changes = [self._decision(stored[i], "not_required", None, reason, now, actor) for i in unique]
             self._write(updated=changes)
             return len(changes)
 
-    def complete_followup(self, entry_id: UUID, done_on: date | None) -> None:
+    def complete_followup(self, entry_id: UUID, done_on: date | None, actor: str | None = None) -> None:
         with self._lock:
             entry = self._get(entry_id)
             if self._stage(entry) != "FOLLOWUP":
                 raise DashboardError("재검 예정 항목에서 기록해 주세요.")
             if done_on is None or done_on > self._today():
                 raise DashboardError("재검을 시행한 날짜(오늘 이전)를 입력해 주세요.", 422)
-            self._write(updated=[replace_entry(entry, self._clock.now(), followup_done_on=done_on)])
+            self._write(updated=[replace_entry(entry, self._clock.now(), followup_done_on=done_on,
+                                               followup_done_by=actor)])
 
     # ---------- 엑셀 가져오기·대조
 

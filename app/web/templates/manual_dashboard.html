@@ -167,7 +167,7 @@
             <button class="button primary full" type="submit">원장 지시 기록 <span aria-hidden="true">→</span></button>
           </form>
           {% else %}
-          <div class="decision-box"><span>기록된 원장 지시</span>{% if selected.followup_due %}<strong>{{ selected.followup_due.strftime('%Y.%m.%d') }} 재검</strong>{% else %}<strong>재검 불필요</strong><p>{{ selected.no_followup_reason }}</p>{% endif %}</div>
+          <div class="decision-box"><span>기록된 원장 지시</span>{% if selected.followup_due %}<strong>{{ selected.followup_due.strftime('%Y.%m.%d') }} 재검</strong>{% else %}<strong>재검 불필요</strong><p>{{ selected.no_followup_reason }}</p>{% endif %}{% if selected.decided_by %}<p class="recorded-by">기록: {{ selected.decided_by }}</p>{% endif %}</div>
           {% if sel_stage == 'FOLLOWUP' %}
           <p class="form-intro">재검을 시행했으면 날짜를 기록해 재검 대상에서 내립니다.</p>
           <form action="/ledger/cases/{{ selected.id }}/followup-done" method="post">
@@ -175,7 +175,7 @@
             <label for="done_on">재검 시행일</label><input type="date" id="done_on" name="done_on" required max="{{ today.isoformat() }}">
             <button class="button primary full" type="submit">재검 완료 기록</button>
           </form>
-          {% else %}<div class="complete-note"><strong>✓ 종결된 기록입니다.</strong>{% if selected.followup_done_on %}<p>재검 시행 {{ selected.followup_done_on.strftime('%Y.%m.%d') }}</p>{% endif %}</div>{% endif %}
+          {% else %}<div class="complete-note"><strong>✓ 종결된 기록입니다.</strong>{% if selected.followup_done_on %}<p>재검 시행 {{ selected.followup_done_on.strftime('%Y.%m.%d') }}{% if selected.followup_done_by %} · 기록: {{ selected.followup_done_by }}{% endif %}</p>{% endif %}</div>{% endif %}
           {% endif %}{% endif %}
         </div>
       {% else %}<div class="detail-body empty-state"><h2 id="detail-title">남은 업무가 없습니다</h2><a href="{{ link(new=True) }}">＋ 새 검사 접수</a></div>{% endif %}

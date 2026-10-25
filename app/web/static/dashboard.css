@@ -685,6 +685,11 @@ input:focus,select:focus {
   overflow-wrap:anywhere;
 }
 
+.decision-box .recorded-by {
+  color:#7b998b;
+  margin-top:6px;
+}
+
 
 .complete-note {
   margin-top:22px;
