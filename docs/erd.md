@@ -1,23 +1,12 @@
 # ERD
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `3219555deb849c8c405298597adbeacd79b3032992a172c5bc72bc5559ae6704`
-> Phase 0 일회성 로컬 생성 스냅샷. 영구 생성기·CI 일치 검사는 Phase 1 예정. 직접 편집하지 않는다.
+> 원천: `ontology/coriops.yaml` · SHA-256 `f9ad6cd3e45b76acf54899bf86d16f2988145caab91a03917e52fec335b31f19`
+> `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
-
-UUID PK와 모든 created_at/updated_at을 포함한다. 별도 보유 로그의 entity UUID·patient_ref는 의도적인 논리 참조다.
+공통 필드(id·created_at·updated_at)는 모든 테이블에 있다. 관계는 각 클래스의 `references` 필드에서 만든다. JSONB 안에 들어가는 구성 요소(ReportFinding·SydneyGrading)와 config 등록값(ResultCode)은 그림에서 뺐다.
 
 ```mermaid
 erDiagram
-    Patient {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        string chart_no
-        string name
-        date birth_date
-        enum sex
-        enum status
-    }
     Staff {
         uuid id PK
         timestamptz created_at
@@ -26,6 +15,7 @@ erDiagram
         string display_name
         string password_hash
         boolean active
+        boolean must_change_password
         integer failed_login_count
         timestamptz locked_until
     }
@@ -35,6 +25,19 @@ erDiagram
         timestamptz updated_at
         uuid staff_id FK
         enum role
+    }
+    PermissionHistory {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
+        uuid staff_id FK
+        uuid changed_by FK
+        timestamptz at
+        jsonb before_roles
+        jsonb after_roles
+        boolean before_active
+        boolean after_active
+        string reason
     }
     AuthSession {
         uuid id PK
@@ -46,60 +49,129 @@ erDiagram
         timestamptz expires_at
         timestamptz revoked_at
     }
-    SubjectReference {
+    AccessLog {
         uuid id PK
         timestamptz created_at
         timestamptz updated_at
-        string subject_type
+        bigint sequence_no
+        timestamptz at
+        uuid actor_id FK
+        string actor_label
+        string client_ip
+        enum action
+        string subject_ref
+        string target_type
+        integer detail_count
+        string outcome
+        string prev_hash
+        string hash
+    }
+    AccessLogReview {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
+        uuid reviewer_id FK
+        timestamptz reviewed_at
+        timestamptz period_start
+        timestamptz period_end
+        bigint last_sequence
+        string last_hash
+        boolean chain_ok
+        integer bulk_alerts
+        string note
+    }
+    Patient {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
+        string chart_no
+        string name
+        enum sex
+    }
+    Exam {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
         uuid patient_id FK
+        enum kind
+        date exam_date
+        enum procedure_type
+        integer age
+        string report_ref
+        enum source
+        uuid import_batch_id FK
+        integer version
     }
-    WorkCycle {
+    Specimen {
         uuid id PK
         timestamptz created_at
         timestamptz updated_at
-        string subject_type
-        uuid subject_id
-        integer cycle_no
-        timestamptz opened_at
-        timestamptz ended_at
-        string reason_code
+        uuid exam_id FK
+        integer specimen_count
+        string site
+        uuid handoff_id FK
+        string registered_by
+        string handed_by
+        string received_by
+        date entrusted_on
     }
-    FollowUpKind {
+    ExamResult {
         uuid id PK
         timestamptz created_at
         timestamptz updated_at
-        string code
-        string owner
-        string label
+        uuid exam_id FK
+        date reported_on
+        string result_code
+        jsonb findings
+        jsonb sydney
+        jsonb review_codes
     }
-    FollowUpPlan {
+    DoctorReview {
         uuid id PK
         timestamptz created_at
         timestamptz updated_at
-        uuid patient_id FK
-        string subject_type
-        uuid subject_id
-        uuid source_cycle_id FK
-        string kind
-        date due_date
-        enum status
-        enum review_status
-        integer revision_no
-        timestamptz completed_at
-        string cancellation_reason
+        uuid exam_id FK
+        timestamptz decided_at
+        string decided_by
+        string no_followup_reason
     }
-    PatientNotification {
+    FollowUp {
         uuid id PK
         timestamptz created_at
         timestamptz updated_at
-        string subject_type
-        uuid subject_id
-        uuid cycle_id FK
-        integer attempt_no
-        enum method
-        timestamptz attempted_at
-        enum outcome
-        uuid staff_id FK
+        uuid review_id FK
+        date due_on
+        date done_on
+        string done_by
+    }
+    Handoff {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz handed_at
+        string registered_by
+        string handed_by
+        string receiver_name
+        integer specimen_count
+        integer case_count
+    }
+    ImportBatch {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz committed_at
+        string digest
+        integer accepted
+        integer skipped
+        jsonb sheet_counts
+    }
+    LedgerExport {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz exported_at
+        string file_name
+        integer row_count
     }
     Rule {
         uuid id PK
@@ -115,7 +187,6 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
         uuid rule_id FK
-        enum actor_type
         timestamptz evaluated_at
         timestamptz finished_at
         enum status
@@ -130,279 +201,52 @@ erDiagram
         uuid rule_id FK
         string subject_type
         uuid subject_id
-        uuid cycle_id FK
         string dedupe_key
         string title
-        enum priority
         enum assignee_role
         timestamptz opened_at
         timestamptz due_at
         enum status
         timestamptz resolved_at
+        string resolved_by
         timestamptz condition_cleared_at
-        string resolution_note
     }
-    AuditEvent {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        enum actor_type
-        uuid actor_id FK
-        timestamptz at
-        string entity_type
-        uuid entity_id
-        string action
-        jsonb before
-        jsonb after
-        string reason_code
-        string reason
-        uuid correlation_id
-    }
-    AccessLogSegment {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        timestamptz period_start
-        timestamptz period_end
-        string opening_checkpoint
-        string previous_segment_hash
-    }
-    AccessLog {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid segment_id FK
-        bigint sequence_no
-        enum actor_type
-        uuid actor_id FK
-        string actor_label
-        timestamptz at
-        inet client_ip
-        uuid patient_ref
-        enum action
-        string target_type
-        uuid target_id
-        string outcome_code
-        uuid correlation_id
-        string prev_hash
-        string hash
-    }
-    AccessLogReview {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid reviewer_id FK
-        timestamptz reviewed_at
-        timestamptz period_start
-        timestamptz period_end
-        jsonb filters
-        bigint last_sequence
-        string last_hash
-        enum disposition
-        string followup_note
-    }
-    PermissionHistory {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid staff_id FK
-        uuid changed_by FK
-        timestamptz at
-        jsonb before_roles
-        jsonb after_roles
-        boolean before_active
-        boolean after_active
-        string reason
-    }
-    PurgeBatch {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid requested_by FK
-        uuid approved_by FK
-        timestamptz approved_at
-        timestamptz completed_at
-        enum status
-        string policy_version
-        string manifest_hash
-        string error_code
-    }
-    PurgeItem {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid batch_id FK
-        string subject_type
-        uuid subject_id
-        string eligibility_snapshot_hash
-        timestamptz deleted_at
-    }
-    ImportBatch {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid committed_by FK
-        string mapping_version
-        string normalized_digest
-        enum status
-        integer accepted_count
-        integer rejected_count
-    }
-    EndoscopyProcedure {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid patient_id FK
-        timestamptz performed_at
-        enum type
-        boolean sedation
-        uuid performer_id FK
-    }
-    ExternalLab {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        string name
-        boolean active
-    }
-    PathologyRequest {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid procedure_id FK
-        uuid external_lab_id FK
-        timestamptz shipped_at
-        string external_ref
-        enum status
-        uuid active_cycle_id FK
-        uuid current_review_id FK
-        integer version_no
-        timestamptz result_complete_at
-        timestamptz notified_at
-        string notification_skip_reason
-        timestamptz notification_waived_at
-        timestamptz closed_at
-        timestamptz terminal_at
-    }
-    Specimen {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid procedure_id FK
-        uuid request_id FK
-        integer seq_no
-        string site
-        enum method
-        timestamptz collected_at
-    }
-    PathologyReport {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid request_id FK
-        timestamptz received_at
-        string report_ref
-        string logical_report_key
-        integer version_no
-        uuid supersedes_id FK
-        enum source
-        string correction_reason
-    }
-    ReportSpecimen {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid report_id FK
-        uuid specimen_id FK
-    }
-    ResultCode {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        string code
-        string label
-        enum scope
-        enum severity_tier
-        boolean active
-    }
-    ReportFinding {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid report_id FK
-        integer display_order
-        string result_code
-        jsonb modifiers
-        integer lesion_count
-    }
-    SydneyGrading {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid report_id FK
-        enum h_pylori
-        enum neutrophil
-        enum mononuclear
-        enum atrophy
-        enum intestinal_metaplasia
-    }
-    PhysicianReview {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid request_id FK
-        uuid cycle_id FK
-        string report_set_hash
-        uuid ordered_by FK
-        uuid entered_by FK
-        timestamptz reviewed_at
-        enum result_category
-        enum urgency
-        enum instruction
-        string instruction_note
-        enum followup_directive
-        string followup_kind
-        date followup_due_date
-        string no_followup_reason
-    }
-    ReviewReport {
-        uuid id PK
-        timestamptz created_at
-        timestamptz updated_at
-        uuid review_id FK
-        uuid report_id FK
-    }
-    Patient ||--o{ EndoscopyProcedure : undergoes
-    EndoscopyProcedure }o--|| Staff : performedBy
-    EndoscopyProcedure ||--o| PathologyRequest : hasRequest
-    PathologyRequest ||--o{ Specimen : hasSpecimen
-    Specimen }o--|| EndoscopyProcedure : collectedDuring
-    PathologyRequest }o--|| ExternalLab : sentTo
-    PathologyReport }o--|| PathologyRequest : resultOf
-    PathologyReport }o--o{ Specimen : coversSpecimen
-    PathologyReport o|--|| PathologyReport : supersedes
-    PathologyReport ||--o{ ReportFinding : hasFinding
-    ReportFinding }o--|| ResultCode : usesResultCode
-    PathologyReport ||--o| SydneyGrading : hasGrading
-    PhysicianReview }o--o{ PathologyReport : reviewsReports
-    PhysicianReview }o--|| PathologyRequest : reviewsRequest
-    PhysicianReview }o--|| Staff : reviewedBy
-    PathologyRequest }o--o| PhysicianReview : usesCurrentReview
-    PhysicianReview }o--|| Staff : enteredBy
-    Staff ||--o{ StaffRole : hasRole
-    SubjectReference }o--|| Patient : identifiesSubject
-    SubjectReference ||--o{ WorkCycle : hasCycle
-    Rule ||--o{ Task : createsTask
-    RuleRun }o--|| Rule : evaluatesRule
-    Task }o--|| SubjectReference : concernsSubject
-    Task }o--|| WorkCycle : belongsToCycle
-    PatientNotification }o--|| SubjectReference : notifiesAbout
-    FollowUpPlan }o--|| SubjectReference : followsFrom
-    FollowUpPlan }o--|| Patient : plansFor
-    FollowUpPlan }o--|| FollowUpKind : usesKind
-    AccessLog }o--|| AccessLogSegment : belongsToSegment
+    StaffRole }o--|| Staff : roleOf
     PermissionHistory }o--|| Staff : changesPermissionOf
-    PurgeBatch ||--o{ PurgeItem : includesPurge
+    PermissionHistory }o--o| Staff : changedBy
+    AuthSession }o--|| Staff : sessionOf
+    AccessLog }o--o| Staff : performedBy
+    AccessLogReview }o--|| Staff : reviewedBy
+    Exam }o--|| Patient : forPatient
+    Exam }o--o| ImportBatch : importedIn
+    Specimen |o--|| Exam : collectedIn
+    Specimen }o--o| Handoff : handedOverIn
+    ExamResult |o--|| Exam : resultOf
+    DoctorReview |o--|| Exam : reviews
+    FollowUp |o--|| DoctorReview : plannedBy
+    RuleRun }o--|| Rule : evaluates
+    Task }o--|| Rule : createdBy
 ```
 
-N:M 관계의 실제 연결은 ReportSpecimen·ReviewReport 테이블이다. SubjectReference와 대상은 공유 PK이며 모듈별 커밋 시 검증한다. 엄밀한 nullable·unique·복합 FK 조건은 데이터 사전과 원천 YAML을 따른다.
+## 단계별 테이블
+
+| 클래스 | 테이블 | 상태 |
+|---|---|---|
+| Staff | `staff` | 구현됨 |
+| StaffRole | `staff_roles` | 구현됨 |
+| PermissionHistory | `permission_history` | 구현됨 |
+| AuthSession | `auth_sessions` | 구현됨 |
+| AccessLog | `access_logs` | 구현됨 |
+| AccessLogReview | `access_log_reviews` | 구현됨 |
+| Patient | `patients` | 예정(Stage A-2) |
+| Exam | `exams` | 예정(Stage A-2) |
+| Specimen | `specimens` | 예정(Stage A-2) |
+| ExamResult | `exam_results` | 예정(Stage A-2) |
+| DoctorReview | `doctor_reviews` | 예정(Stage A-2) |
+| FollowUp | `followups` | 예정(Stage A-2) |
+| Handoff | `ledger_handoffs` | 구현됨 |
+| ImportBatch | `ledger_import_batches` | 구현됨 |
+| LedgerExport | `ledger_exports` | 구현됨 |
+| Rule | `rules` | 예정(Stage B) |
+| RuleRun | `rule_runs` | 예정(Stage B) |
+| Task | `tasks` | 예정(Stage B) |

@@ -10,4 +10,7 @@ COPY migrations ./migrations
 RUN pip install --no-cache-dir '.[test]'
 COPY tests ./tests
 COPY docker-compose.prototype.yml docker-compose.ledger.yml ./
+# 생성 문서 일치 시험(test_ontology)에 필요하다.
+COPY scripts ./scripts
+COPY docs/ontology.md docs/erd.md docs/state-machine.md docs/fhir-mapping.md ./docs/
 CMD ["python", "-m", "pytest", "-q"]

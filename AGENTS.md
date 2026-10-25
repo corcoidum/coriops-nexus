@@ -28,7 +28,7 @@
 | `app/main.py` | 조립 지점. DB 모드면 로그인·접속기록을 항상 켠다 |
 | `migrations/` | Alembic. 스키마 변경은 반드시 새 리비전으로, downgrade도 작성한다 |
 | `config/*.yaml` | 진료시간·수령시각·권한표·보관기간·엑셀 매핑. 숫자를 코드에 하드코딩하지 않는다 |
-| `ontology/coriops.yaml` | 정식 도메인 모델의 원천. `docs/ontology.md`·`erd.md`·`state-machine.md`·`fhir-mapping.md`는 여기서 생성한 사본이며 직접 고치지 않는다 |
+| `ontology/coriops.yaml` | 정식 도메인 모델의 원천. `docs/ontology.md`·`erd.md`·`state-machine.md`·`fhir-mapping.md`는 `scripts/gen_docs.py`로 만든 사본이며 직접 고치지 않는다. 테이블을 바꾸면 YAML도 함께 고친다(`test_ontology.py`가 검사) |
 | `tests/prototype/` | pytest. 시계는 고정(`FixedClock`)하고, 화면은 실제 링크를 따라가 본다 |
 
 새 업무 영역(Lab·검진·Recall)은 `app/modules/<이름>/`에 모듈로 추가한다. kernel에 업무 이름을 넣지 않는다.
@@ -37,7 +37,8 @@
 
 ```sh
 python -m pip install '.[test]'
-python -m pyflakes app tests migrations
+python -m pyflakes app tests migrations scripts
+python scripts/gen_docs.py --check   # YAML을 고쳤으면 먼저 python scripts/gen_docs.py
 # PostgreSQL 16이 필요하다(docker compose --profile test 또는 로컬 설치).
 PGHOST=127.0.0.1 PGPORT=5432 PGUSER=coriops_test PGDATABASE=coriops_test python -m pytest -q
 ```

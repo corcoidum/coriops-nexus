@@ -113,7 +113,7 @@ DB 자료는 Docker 볼륨 `ledger-data`에 남는다. `down -v`는 볼륨을 �
 | `app/kernel/auth.py`·`access_log.py`·`routes_auth.py` | 로그인·세션·권한·계정 관리, 추가 전용 해시 체인 접속기록·점검 |
 | `app/manage.py` | 오프라인 초기 계정 생성 |
 
-이 장부 스키마(`ledger_*` 테이블)는 실사용을 위한 실용 모델이다. `ontology/coriops.yaml`의 정식 PathologyRequest 모델과의 통합은 Q17 결정 후 진행한다.
+`ledger_entries`는 전환기 테이블이다. Stage A-2에서 `ontology/coriops.yaml` v0.2의 Patient·Exam·Specimen·ExamResult·DoctorReview·FollowUp 테이블로 옮긴다(A14, D11).
 
 ## 검증 — 2026-10-25
 

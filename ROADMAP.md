@@ -32,8 +32,8 @@
 
 | 초안 Phase | 내용 | 상태 | 근거 |
 |---|---|---|---|
-| 0 Foundation | README·개인정보 원칙·Python·pytest·CI·AGENTS.md | ✅ (이 PR로 완료) | `pyproject.toml`, `tests/` 267개, `.github/workflows/ci.yml`, `AGENTS.md` |
-| 1 Ontology v0.1 | Entity·관계·상태·FHIR | ✅ 설계 / 🟡 실제 DB와 불일치 | `ontology/coriops.yaml` 31클래스·31관계·24전이 |
+| 0 Foundation | README·개인정보 원칙·Python·pytest·CI·AGENTS.md | ✅ | `pyproject.toml`, `tests/` 267개, `.github/workflows/ci.yml`, `AGENTS.md` |
+| 1 Ontology | Entity·관계·상태·FHIR | ✅ v0.2 / 🟡 장부 테이블 이전 남음 | `ontology/coriops.yaml` v0.2 21클래스(구현 12·예정 9)·`scripts/gen_docs.py`·일치 시험 |
 | 2 PostgreSQL ERD | 테이블·FK·제약·마이그레이션·감사 필드 | 🟡 | Alembic 0001~0002. 운영 테이블은 `ledger_*` 실용 모델 |
 | 3 Endoscopy + Specimen MVP | 접수 → 인계 → 결과 → 원장 지시 → 재검 | ✅ | DB 저장 장부, 3자 인계·병 수 대조, 엑셀 가져오기·대조·출력 |
 | 4 Rule Engine | 규칙이 누락을 찾아냄 | 🔴 | 지연·도래는 화면에서 즉석 계산. `config/rules.yaml`은 설계만 |
@@ -64,7 +64,7 @@
 
 초안 Phase를 현재 상태에서 이어지는 순서로 묶었다. 각 단계는 별도 PR이며, 끝나면 3장 표를 고친다.
 
-### Stage 0 — Foundation 마무리 ✅ (이 PR)
+### Stage 0 — Foundation 마무리 ✅
 
 - `ROADMAP.md`(이 문서), `AGENTS.md`·`CLAUDE.md`, GitHub Actions CI(pyflakes + Compose 구성 + PostgreSQL 16 pytest)
 - DB 장부 Compose를 `docker-compose.ledger.yml`로 분리: 메모리 시연·시험 파일이 `.env` 없이 다시 실행된다(DB 장부의 필수 비밀값 때문에 파일 전체가 실패하던 문제)
@@ -74,9 +74,9 @@
 
 지금은 정식 모델(`ontology/coriops.yaml`)과 운영 테이블(`ledger_entries` 한 줄에 환자·검사·결과·지시·재검이 모두 있음)이 갈라져 있다. Lab·검진·Recall을 붙이기 전에 합친다.
 
-- 테이블: `patients`, `endoscopies`, `specimens`, `pathology_reports`, `doctor_reviews`, `followups`(재검 계획), 기존 `ledger_*`에서 Alembic 데이터 이전
-- 환자는 차트번호로 한 번만 저장하고, 이름 변경·충돌은 덮어쓰지 않고 거부한다
-- `ontology/coriops.yaml`을 실제 운영 흐름(A04~A13)에 맞게 줄이고, 문서 생성기를 `scripts/gen_docs.py`로 저장소에 넣는다. CI에서 YAML·DB·문서 일치를 검사한다
+- **A-1 ✅** `ontology/coriops.yaml` v0.2: 실제 운영 흐름(A04~A13)에 맞게 줄였다(이전 검토안은 `docs/archive/`, D11). 문서 생성기 `scripts/gen_docs.py`, 시험 `test_ontology.py`로 YAML·코드 테이블·문서 일치를 검사한다
+- **A-2** 테이블: `patients`, `exams`, `specimens`, `exam_results`, `doctor_reviews`, `followups`(재검 계획), 기존 `ledger_entries`에서 Alembic 데이터 이전(A14: Stool은 내시경이 아니고 CLO·Stool 결과는 병리 판독이 아니므로 `endoscopies`·`pathology_reports` 대신 이 이름을 쓴다)
+- 환자는 차트번호로 한 번만 저장하고, 이름 변경·충돌은 덮어쓰지 않고 거부한다(A14). 원장 지시·재검 완료의 기록자를 새로 남긴다
 - **완료 조건:** 기존 화면·시험이 그대로 통과하고, 이전 전후 건수·결과·재검 일정이 일치하며, upgrade·downgrade·upgrade가 된다
 
 ### Stage B — Rule + Task Engine (초안 Phase 4·5)
