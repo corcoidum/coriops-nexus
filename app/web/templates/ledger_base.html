@@ -8,18 +8,30 @@
 </head>
 <body>
 {% set nav = request.url.path %}
+{% set lab = request.app.state.lab_service %}
+{% set can_view = actor and actor.can('ledger.view') %}
+{% set critical_count = lab.critical_pending_count() if (lab and can_view) else 0 %}
 <aside class="sidebar">
-  <a class="brand" href="/dashboard"><span class="brand-mark">C</span><span>CoriOps<span class="brand-sub">NEXUS</span></span></a>
-  <div class="sidebar-section">WORKSPACE</div>
-  {% if actor and actor.can('ledger.view') %}
+  <a class="brand" href="/"><span class="brand-mark">C</span><span>CoriOps<span class="brand-sub">NEXUS</span></span></a>
+  <a class="nav-item nav-home {% if nav == '/' %}active{% endif %}" href="/"><span aria-hidden="true">⌂</span> 오늘 할 일</a>
+  {% if can_view %}
+  <div class="nav-group tissue">
+  <div class="sidebar-section">조직검체</div>
   <a class="nav-item {% if nav == '/dashboard' and stage != 'FOLLOWUP' %}active{% endif %}" href="/dashboard"><span aria-hidden="true">▦</span> 조직검체 장부</a>
   <a class="nav-item {% if nav == '/dashboard' and stage == 'FOLLOWUP' and due == 'due' %}active{% endif %}" href="/dashboard?stage=FOLLOWUP&amp;due=due"><span aria-hidden="true">⚑</span> 재검 도래{% if flags is defined and flags.followup_due %} <span class="nav-badge">{{ flags.followup_due }}</span>{% endif %}</a>
   <a class="nav-item {% if nav == '/dashboard' and stage == 'FOLLOWUP' and due != 'due' %}active{% endif %}" href="/dashboard?stage=FOLLOWUP"><span aria-hidden="true">◷</span> 재검 대상</a>
   <a class="nav-item {% if nav == '/ledger/excel' %}active{% endif %}" href="/ledger/excel"><span aria-hidden="true">⇅</span> 엑셀 가져오기·출력</a>
-  {% if request.app.state.lab_service %}<a class="nav-item {% if nav == '/lab' %}active{% endif %}" href="/lab"><span aria-hidden="true">◉</span> 혈액검체 장부</a>{% endif %}
+  </div>
+  {% if lab %}
+  <div class="nav-group blood">
+  <div class="sidebar-section">혈액검체 · 검진</div>
+  <a class="nav-item {% if nav == '/lab' and stage != 'CRITICAL_PENDING' %}active{% endif %}" href="/lab"><span aria-hidden="true">◉</span> 혈액검체 장부</a>
+  <a class="nav-item {% if nav == '/lab' and stage == 'CRITICAL_PENDING' %}active{% endif %}" href="/lab?stage=CRITICAL_PENDING"><span aria-hidden="true">!</span> 위급치 보고{% if critical_count %} <span class="nav-badge">{{ critical_count }}</span>{% endif %}</a>
+  </div>
+  {% endif %}
   {% endif %}
   {% if auth_enabled and actor and (actor.can('admin.staff') or actor.can('privacy.logs')) %}
-  <div class="sidebar-section">PRIVACY</div>
+  <div class="sidebar-section">개인정보</div>
   {% if actor.can('admin.staff') %}<a class="nav-item {% if nav == '/admin/staff' %}active{% endif %}" href="/admin/staff"><span aria-hidden="true">⚇</span> 계정·권한 관리</a>{% endif %}
   {% if actor.can('privacy.logs') %}<a class="nav-item {% if nav == '/privacy/access-logs' %}active{% endif %}" href="/privacy/access-logs"><span aria-hidden="true">☰</span> 접속기록 점검</a>{% endif %}
   {% endif %}
@@ -33,7 +45,9 @@
   </div>
 </aside>
 <main class="workspace">
-  <header class="topbar"><span>진료 지원 <span class="breadcrumb">/</span> {% block crumb %}조직검체 장부{% endblock %}</span><span class="date">{% if today %}{{ today.strftime('%Y.%m.%d') }}{% endif %}</span></header>
+  <header class="topbar"><span>진료 지원 <span class="breadcrumb">/</span> {% block crumb %}<span class="ledger-chip tissue">조직검체</span> 장부{% endblock %}</span>
+    {% if critical_count %}<a class="critical-alert" href="/lab?stage=CRITICAL_PENDING" role="status">⚠ 위급치<span class="alert-long"> 원장 보고 대기</span> {{ critical_count }}건</a>{% endif %}
+    <span class="date">{% if today %}{{ today.strftime('%Y.%m.%d') }}{% endif %}</span></header>
   <div class="page-body">
     {% if persistent is defined %}{% if persistent %}
     <div class="demo-banner"><strong>DB 저장 모드</strong><span>입력은 PostgreSQL에 저장되고 조회·변경은 접속기록에 남습니다. 원장 결재 전에는 합성 자료로만 시험합니다.</span></div>

@@ -2,12 +2,12 @@
 {% macro link(stage, selected_id=none) -%}
 /lab?stage={{ stage }}{% if selected_id %}&amp;selected_id={{ selected_id }}{% endif %}
 {%- endmacro %}
-{% block crumb %}혈액검체 장부{% endblock %}
+{% block crumb %}<span class="ledger-chip blood">혈액검체</span> 장부{% endblock %}
 {% block footer %}<span>CoriOps Nexus <span class="footer-dot">·</span> 혈액검체 장부 (합성 시연)</span><span>씨젠 결과 → 위급치 원장 보고 → 직원 확인</span>{% endblock %}
 {% block content %}
     <div class="demo-banner"><strong>합성 자료로 눌러보세요.</strong><span>혈액검체 탭은 아직 저장하지 않는 시연입니다. 실제 결과를 입력하지 않습니다.</span>
       <form action="/lab/reset" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" type="submit">↻ 시연 처음부터</button></form></div>
-    <div class="page-heading"><div><span class="eyebrow">SCREENING LAB</span><h1>검진 혈액검체 장부</h1><p>씨젠 결과 → 위급치 원장 보고 → 직원 확인을 한 화면에서 이어 갑니다.</p></div></div>
+    <div class="page-heading"><div><span class="eyebrow"><span class="ledger-chip blood">혈액검체</span> SCREENING LAB</span><h1>검진 혈액검체 장부</h1><p>씨젠 결과 → 위급치 원장 보고 → 직원 확인을 한 화면에서 이어 갑니다.</p></div></div>
 
     <section class="stat-grid four" aria-label="업무 단계별 건수">
       {% for key, label in stage_labels.items() %}

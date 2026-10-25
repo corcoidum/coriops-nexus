@@ -44,11 +44,6 @@ def redirect(path: str = "/dashboard", **params) -> RedirectResponse:
     return RedirectResponse(f"{path}?{query}" if query else path, status_code=303)
 
 
-@router.get("/")
-def home():
-    return RedirectResponse("/dashboard", status_code=303)
-
-
 @router.get("/dashboard")
 def dashboard(request: Request, service: Service, stage: str = "ALL", kind: str = "ALL",
               selected_id: UUID | None = None, q: str = "", page: int = 1, new: bool = False, notice: str = "",

@@ -134,6 +134,11 @@ class LabDashboardService:
             name = self._name(checked_by, "확인한 직원")
             self._cases[case_id] = replace(case, checked_at=self._clock.now(), checked_by=name)
 
+    def critical_pending_count(self) -> int:
+        """모든 화면 상단 알림용. 건수만 돌려주고 환자 정보는 담지 않는다."""
+        with self._lock:
+            return sum(case.stage == "CRITICAL_PENDING" for case in self._cases.values())
+
     def subject_of(self, case_id: UUID) -> str:
         with self._lock:
             return self._get(case_id).record.chart_no

@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.formparsers import MultiPartParser
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.home import router as home_router
 from app.kernel.access_log import AccessLogger
 from app.kernel.auth import AuthService
 from app.kernel.routes_auth import router as auth_router
@@ -111,6 +112,7 @@ def create_app(service: ManualDashboardService | None = None, csrf_token: str | 
 
     app.mount("/static", StaticFiles(directory=web / "static"), name="static")
     app.include_router(auth_router)
+    app.include_router(home_router)
     app.include_router(router)
     if app.state.lab_service is not None:
         app.include_router(lab_router)

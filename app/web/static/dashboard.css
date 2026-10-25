@@ -1281,3 +1281,186 @@ input:focus,select:focus {
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
 }
+
+/* 장부 구분: 조직검체 = 파랑, 혈액검체 = 청록. 빨강은 긴급(위급치·재검 도래)에만 쓴다. */
+:root {
+  --tissue:#315dd3;
+  --tissue-tint:#e8eefb;
+  --blood:#0f8a7e;
+  --blood-tint:#e3f4f1;
+}
+
+.ledger-chip {
+  display:inline-block;
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:0;
+  border-radius:4px;
+  padding:2px 7px;
+  margin-right:6px;
+  vertical-align:1px;
+}
+
+.ledger-chip.tissue {
+  color:var(--tissue);
+  background:var(--tissue-tint);
+}
+
+.ledger-chip.blood {
+  color:var(--blood);
+  background:var(--blood-tint);
+}
+
+.nav-home {
+  margin-top:28px;
+}
+
+.nav-group {
+  border-left:3px solid transparent;
+  border-radius:3px;
+  padding-left:4px;
+  margin-top:16px;
+}
+
+.nav-group.tissue {
+  border-left-color:var(--tissue);
+}
+
+.nav-group.blood {
+  border-left-color:var(--blood);
+}
+
+.nav-group .sidebar-section {
+  margin:6px 12px 6px;
+}
+
+.nav-group.tissue .sidebar-section {
+  color:#9db8f0;
+}
+
+.nav-group.blood .sidebar-section {
+  color:#7fd3c8;
+}
+
+.nav-group .nav-item {
+  padding-top:10px;
+  padding-bottom:10px;
+}
+
+.critical-alert {
+  background:#fdecea;
+  color:#b33a31;
+  font-weight:700;
+  font-size:12px;
+  border-radius:999px;
+  padding:6px 13px;
+  margin-left:auto;
+  margin-right:16px;
+  white-space:nowrap;
+}
+
+.critical-alert:hover {
+  background:#f9d8d4;
+}
+
+.today-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+  margin-bottom:26px;
+}
+
+.today-card {
+  padding:18px 20px;
+  border-top:4px solid var(--c);
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+
+.today-card.tissue {
+  --c:var(--tissue);
+}
+
+.today-card.blood {
+  --c:var(--blood);
+}
+
+.today-head {
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+
+.today-head h2 {
+  margin:0;
+  font-size:16px;
+}
+
+.today-flow {
+  margin:0 0 6px;
+  font-size:12px;
+  color:var(--muted);
+}
+
+.today-row {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:9px 12px;
+  border-radius:7px;
+  background:#f6f8fa;
+  font-size:13px;
+}
+
+.today-row strong {
+  font-size:20px;
+}
+
+.today-row:hover {
+  background:#edf1f4;
+}
+
+.today-row.warn {
+  background:#fcf4e7;
+  color:#9a6a17;
+}
+
+.today-row.danger {
+  background:#fdecea;
+  color:#b33a31;
+}
+
+.today-go {
+  margin-top:6px;
+  font-size:12px;
+  font-weight:700;
+  color:var(--c);
+}
+
+@media(max-width:950px) {
+  .today-grid {
+    grid-template-columns:minmax(0,1fr);
+  }
+  .critical-alert {
+    margin-right:8px;
+  }
+}
+
+.nav-item .nav-badge {
+  font-size:10px;
+  color:#fff;
+}
+
+@media(max-width:950px) {
+  .alert-long {
+    display:none;
+  }
+}
+
+@media(max-width:520px) {
+  .topbar .date {
+    display:none;
+  }
+}

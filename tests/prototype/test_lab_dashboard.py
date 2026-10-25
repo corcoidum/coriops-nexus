@@ -147,6 +147,36 @@ def test_reset_restores_seed(client, app):
     assert lab(app).snapshot()["counts"]["DONE"] == 0
 
 
+def test_home_shows_both_ledgers_and_links_work(client):
+    page = client.get("/").text
+    assert "조직검체 장부 열기" in page and "혈액검체 장부 열기" in page
+    for href in re.findall(r'class="today-(?:row[^"]*|go)" href="([^"]+)"', page):
+        assert client.get(href.replace("&amp;", "&")).status_code == 200, href
+    assert 'href="/lab?stage=CRITICAL_PENDING"' in page
+
+
+def test_sidebar_groups_ledgers_separately(client):
+    page = client.get("/dashboard").text
+    tissue = page.index('class="nav-group tissue"')
+    blood = page.index('class="nav-group blood"')
+    assert tissue < page.index('href="/ledger/excel"') < blood < page.index('href="/lab"')
+
+
+def test_critical_alert_shows_on_every_ledger_page_until_reported(client, app):
+    for path in ("/", "/dashboard", "/ledger/excel", "/lab"):
+        assert "⚠ 위급치<span class=\"alert-long\"> 원장 보고 대기</span> 2건" in client.get(path).text, path
+    for case in lab(app).snapshot(stage="CRITICAL_PENDING")["cases"]:
+        post(client, app, f"/lab/cases/{case.id}/report-critical", reported_by="테스트사무장")
+    assert lab(app).critical_pending_count() == 0
+    assert "critical-alert" not in client.get("/dashboard").text
+
+
+def test_ledger_chips_mark_each_page(client):
+    assert 'ledger-chip tissue' in client.get("/dashboard").text
+    lab_page = client.get("/lab").text
+    assert 'ledger-chip blood' in lab_page and '<span class="ledger-chip tissue">조직검체</span> 장부' not in lab_page
+
+
 def test_service_repr_hides_patient_values(app):
     case = first_in(app, "CHECK_PENDING")
     assert case.record.patient_name not in repr(case)

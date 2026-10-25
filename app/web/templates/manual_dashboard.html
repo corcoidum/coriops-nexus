@@ -8,7 +8,7 @@
 /dashboard?stage={{ s }}&amp;kind={{ k }}{% if text %}&amp;q={{ text|urlencode }}{% endif %}{% if page > 1 %}&amp;page={{ page }}{% endif %}{% if selected_id %}&amp;selected_id={{ selected_id }}{% endif %}{% if new %}&amp;new=1{% endif %}{% if d and s == 'FOLLOWUP' %}&amp;due={{ d }}{% if d == 'range' %}&amp;due_from={{ current.due_from }}&amp;due_to={{ current.due_to }}{% endif %}{% endif %}
 {%- endmacro %}
 {% block content %}
-    <div class="page-heading"><div><span class="eyebrow">TODAY'S LEDGER</span><h1>오늘의 조직검체 장부</h1><p>접수 → 인계 → 결과 → 원장 지시 → 재검을 한 화면에서 이어 갑니다.</p></div><a class="button primary" href="{{ link(new=True) }}">＋ 새 검사 접수</a></div>
+    <div class="page-heading"><div><span class="eyebrow"><span class="ledger-chip tissue">조직검체</span> TODAY'S LEDGER</span><h1>오늘의 조직검체 장부</h1><p>접수 → 인계 → 결과 → 원장 지시 → 재검을 한 화면에서 이어 갑니다.</p></div><a class="button primary" href="{{ link(new=True) }}">＋ 새 검사 접수</a></div>
 
     <section class="panel handoff-panel level-{{ pickup.level }}" aria-labelledby="handoff-title">
       <div class="handoff-summary">

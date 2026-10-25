@@ -384,7 +384,7 @@ def test_memory_demo_keeps_working_without_login():
     with TestClient(app) as client:
         assert client.get("/dashboard").status_code == 200
         assert client.get("/admin/staff").status_code == 404
-        assert client.get("/login", follow_redirects=False).headers["location"] == "/dashboard"
+        assert client.get("/login", follow_redirects=False).headers["location"] == "/"
 
 
 def test_lab_demo_tab_is_not_mounted_in_db_mode(parts):
@@ -396,3 +396,7 @@ def test_lab_demo_tab_is_not_mounted_in_db_mode(parts):
         login(client, "admin1")
         assert 'href="/lab"' not in client.get("/dashboard").text
         assert client.get("/lab").status_code == 404
+        # 첫 화면에는 조직검체 카드만 있고 위급치 알림도 없다.
+        home = client.get("/").text
+        assert "오늘 할 일" in home and "조직검체 장부 열기" in home
+        assert "혈액검체 장부 열기" not in home and "critical-alert" not in home

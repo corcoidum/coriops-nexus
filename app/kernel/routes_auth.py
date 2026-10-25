@@ -43,7 +43,7 @@ def as_user_error(error: AuthError) -> UserError:
 @router.get("/login")
 def login_page(request: Request, notice: str = ""):
     if request.app.state.auth is None or getattr(request.state, "actor", None):
-        return see_other("/dashboard")
+        return see_other("/")
     messages = {"logout": "로그아웃했습니다.", "expired": "오래 사용하지 않아 로그아웃됐습니다. 다시 로그인해 주세요."}
     return render(request, "login.html", {"notice": messages.get(notice, "")})
 
@@ -61,7 +61,7 @@ async def login(request: Request, username: Annotated[str, Form()] = "", passwor
         await run_in_threadpool(lambda: request.app.state.access_log.record(**failure))
         return render(request, "login.html", {"error": error.message}, status_code=error.status_code)
     audit(request, "LOGIN", "login", actor=actor)
-    response = see_other("/account/password" if actor.must_change_password else "/dashboard")
+    response = see_other("/account/password" if actor.must_change_password else "/")
     response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="strict", secure=auth.policy.cookie_secure,
                         path="/")
     return response
@@ -98,7 +98,7 @@ def change_password(request: Request, csrf_token: Annotated[str, Form()] = "",
     except AuthError as error:
         raise as_user_error(error) from None
     audit(request, "ACCOUNT", f"password:{actor.username}")
-    return see_other("/dashboard")
+    return see_other("/")
 
 
 # ---------- 계정 관리 (개인정보 책임자)
