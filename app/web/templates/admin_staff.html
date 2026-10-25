@@ -1,0 +1,41 @@
+{% extends "ledger_base.html" %}
+{% block crumb %}계정·권한 관리{% endblock %}
+{% block content %}
+    <div class="page-heading"><div><span class="eyebrow">STAFF</span><h1>계정·권한 관리</h1><p>개인 계정만 만듭니다. 역할·사용 여부·비밀번호를 바꾸면 그 사람의 로그인이 즉시 끊기고 권한 이력에 남습니다.</p></div></div>
+    <div class="excel-grid">
+      <section class="panel excel-card">
+        <span class="eyebrow">NEW</span><h2>계정 만들기</h2>
+        <form action="/admin/staff" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="field-row"><div><label for="username">아이디</label><input id="username" name="username" maxlength="30" required pattern="[a-z0-9._\-]{3,30}" autocomplete="off"></div>
+            <div><label for="display_name">표시 이름</label><input id="display_name" name="display_name" maxlength="30" required autocomplete="off"></div></div>
+          <fieldset class="segmented"><legend>역할</legend>{% for role in roles %}<label><input type="checkbox" name="roles" value="{{ role }}"> {{ role_labels[role] }}</label>{% endfor %}</fieldset>
+          <label for="password">임시 비밀번호({{ min_length }}자 이상)</label><input id="password" name="password" type="password" minlength="{{ min_length }}" maxlength="128" required autocomplete="new-password">
+          <p class="field-help">첫 로그인 때 본인이 바꾸도록 강제합니다. 임시 비밀번호는 직접 전달하고 메모로 남기지 않습니다.</p>
+          <label for="reason">사유</label><input id="reason" name="reason" maxlength="120" required placeholder="예: 신규 입사(원무)" autocomplete="off">
+          <button class="button primary full" type="submit">계정 만들기</button>
+        </form>
+      </section>
+      <section class="panel excel-card">
+        <span class="eyebrow">ROLES</span><h2>역할별 권한 [가정·Q01]</h2>
+        <table><thead><tr><th>업무</th><th>허용 역할</th></tr></thead><tbody>
+          {% for name, allowed in permissions.items() %}<tr><td>{{ name }}</td><td>{% for role in roles if role in allowed %}{{ role_labels[role] }}{% if not loop.last %}·{% endif %}{% endfor %}</td></tr>{% endfor %}
+        </tbody></table>
+      </section>
+    </div>
+    <section class="panel preview-panel">
+      <div class="panel-header"><div><h2>계정 목록<span class="count-tag">{{ staff|length }}</span></h2><p>마지막 개인정보 책임자는 빼거나 비활성화할 수 없습니다. 자기 역할은 줄일 수 없습니다.</p></div></div>
+      <div class="table-scroll"><table><thead><tr><th>아이디</th><th>이름</th><th>상태</th><th>역할 변경</th><th>사용</th><th>비밀번호 초기화</th></tr></thead><tbody>
+      {% for person in staff %}
+        <tr>
+          <td>{{ person.username }}</td>
+          <td>{{ person.display_name }}</td>
+          <td>{% if not person.active %}<span class="alert-chip">중지</span>{% elif person.locked %}<span class="alert-chip danger">잠김</span>{% elif person.must_change_password %}<span class="alert-chip warn">변경 대기</span>{% else %}사용 중{% endif %}</td>
+          <td><form class="inline-form" action="/admin/staff/{{ person.id }}/roles" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% for role in roles %}<label class="check"><input type="checkbox" name="roles" value="{{ role }}" {% if role in person.roles %}checked{% endif %}> {{ role_labels[role] }}</label>{% endfor %}<input name="reason" maxlength="120" required placeholder="사유" aria-label="역할 변경 사유"><button class="button secondary" type="submit">저장</button></form></td>
+          <td><form class="inline-form" action="/admin/staff/{{ person.id }}/active" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="active" value="{% if person.active %}0{% else %}1{% endif %}"><input name="reason" maxlength="120" required placeholder="사유" aria-label="사용 변경 사유"><button class="button secondary" type="submit">{% if person.active %}중지{% else %}다시 사용{% endif %}</button></form></td>
+          <td><form class="inline-form" action="/admin/staff/{{ person.id }}/reset" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input name="password" type="password" minlength="{{ min_length }}" maxlength="128" required placeholder="임시 비밀번호" aria-label="임시 비밀번호" autocomplete="new-password"><input name="reason" maxlength="120" required placeholder="사유" aria-label="초기화 사유"><button class="button secondary" type="submit">초기화</button></form></td>
+        </tr>
+      {% endfor %}
+      </tbody></table></div>
+    </section>
+{% endblock %}

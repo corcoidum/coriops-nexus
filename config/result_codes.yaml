@@ -1,0 +1,29 @@
+status: AWAITING_USER_ABBREVIATION_DICTIONARY_Q19
+# 사용자 결정 A11: 정식 앱은 조직검사 결과를 등록 코드와 Sydney 등급만 저장한다(판독문 원문 저장 금지).
+# 아래 코드 이름은 기존 대장 표기 방식에서 관찰한 것뿐이다. 의미(label)·중요도(severity_tier)·modifier 의미는
+# Q19의 사용자 약어 사전으로 채우고 원장 승인 후 확정한다. 임의의 의학 해석을 넣지 않는다.
+# severity_tier는 확정 후에도 대시보드 정렬·강조 전용이다. 재검 필요 여부·종류·기한은 원장이 지정한다.
+notation: '{code}#{lesion_count}({modifier}/{modifier}), 여러 결과는 쉼표 구분'
+codes:
+  H: {label: null, scope: null, severity_tier: null}
+  TA: {label: null, scope: null, severity_tier: null}
+  SS: {label: null, scope: null, severity_tier: null}
+  FGP: {label: null, scope: null, severity_tier: null}
+  CG: {label: null, scope: null, severity_tier: null}
+  CAG: {label: null, scope: null, severity_tier: null}
+  CNI: {label: null, scope: null, severity_tier: null}
+  INF_P: {label: null, scope: null, severity_tier: null, ledger_notation: inf.p}
+  ADENOCARCINOMA: {label: null, scope: null, severity_tier: null}
+modifiers:
+  L: {label: null}
+  e: {label: null}
+  im: {label: null}
+# Sydney 표기(HP-/Neu++/Mon++/Atr+/IM-)의 항목 약어 → SydneyGrading 필드. 항목 대응도 Q19에서 확인한다.
+sydney_notation:
+  HP: h_pylori
+  Neu: neutrophil
+  Mon: mononuclear
+  Atr: atrophy
+  IM: intestinal_metaplasia
+sydney_grades: {'-': NEG, '+': POS1, '++': POS2, '+++': POS3}
+unknown_code_policy: reject_and_request_registration

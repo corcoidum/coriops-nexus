@@ -13,5 +13,14 @@ closing_times:
   sunday: null
 temporary_closures: ['2026-11-25']
 temporary_closures_are_synthetic: true
+# 사용자 확인(A12, 2026-10-24): 씨젠 기사 검체 수령 시각. 휴진일에는 수령하지 않는다.
+lab_pickup_times:
+  monday: '15:00'
+  tuesday: '15:00'
+  wednesday: '11:00'
+  thursday: '15:00'
+  friday: '15:00'
+  saturday: '11:00'
+  sunday: null
 business_day_due_policy: exclude_anchor_date_use_target_closing_time
 urgent_due_policy: same_day_closing_or_immediate_if_after_closing
