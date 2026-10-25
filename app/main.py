@@ -1,21 +1,37 @@
-"""실환자 자료를 받지 않는 로컬 합성 대시보드 진입점."""
+"""조직검체 장부 진입점.
+
+CORIOPS_DATABASE_URL이 있으면 PostgreSQL에 저장하고, 없으면 합성 seed를 쓰는 메모리 시연이다.
+원장 결재·2단계 보안 조치 전에는 실제 환자 자료를 넣지 않는다.
+"""
 
 from pathlib import Path
+import os
 import secrets
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.formparsers import MultiPartParser
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.modules.endoscopy_pathology.ledger_db import PostgresStore
 from app.modules.endoscopy_pathology.manual_dashboard import DashboardError, ManualDashboardService
 from app.modules.endoscopy_pathology.routes_manual_dashboard import router
 
 
+def default_service() -> ManualDashboardService:
+    if os.environ.get("CORIOPS_DATABASE_URL"):
+        return ManualDashboardService(store=PostgresStore())
+    return ManualDashboardService()
+
+
 def create_app(service: ManualDashboardService | None = None, csrf_token: str | None = None) -> FastAPI:
-    app = FastAPI(title="CoriOps Nexus · 합성 시연", docs_url=None, redoc_url=None, openapi_url=None)
-    app.state.dashboard_service = service or ManualDashboardService()
+    app = FastAPI(title="CoriOps Nexus · 조직검체 장부", docs_url=None, redoc_url=None, openapi_url=None)
+    app.state.dashboard_service = service or default_service()
+    # 업로드 엑셀이 임시 디스크 파일로 넘어가지 않게, 허용 크기까지 메모리에 둔다.
+    MultiPartParser.spool_max_size = max(MultiPartParser.spool_max_size,
+                                         app.state.dashboard_service.max_upload_bytes + 64 * 1024)
     app.state.csrf_token = csrf_token or secrets.token_urlsafe(32)
     web = Path(__file__).parent / "web"
     app.state.templates = Jinja2Templates(directory=web / "templates")

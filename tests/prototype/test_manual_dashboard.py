@@ -45,8 +45,13 @@ def snapshot(app, **kwargs):
     return app.state.dashboard_service.snapshot(**kwargs)
 
 
+def stage_of(app, case_id: UUID) -> str:
+    return snapshot(app)["stages"][case_id]
+
+
 def case_in_stage(app, stage: str):
-    return next(case for case in snapshot(app)["cases"] if case.stage == stage)
+    snap = snapshot(app, stage=stage)
+    return snap["cases"][0]
 
 
 def current_case(app, case_id: UUID):
@@ -58,7 +63,7 @@ def post(client, app, path: str, **data: str):
 
 
 def post_case(client, app, case_id: UUID, action: str, **data: str):
-    return post(client, app, f"/demo/cases/{case_id}/{action}", **data)
+    return post(client, app, f"/ledger/cases/{case_id}/{action}", **data)
 
 
 def handoff_data(count: str, **overrides: str) -> dict[str, str]:
@@ -75,8 +80,8 @@ def receive_data(**overrides: str) -> dict[str, str]:
 def case_state(app, case_id: UUID) -> tuple[object, ...]:
     """거절된 요청이 입력을 바꾸지 않는지 확인할 값만 고정한다."""
     case = current_case(app, case_id)
-    return (case.stage, case.handoff_id, case.report_ref, case.findings, case.sydney,
-            case.site_summary, case.followup_due, case.no_followup_reason, case.followup_done_on)
+    return (stage_of(app, case_id), case.handoff_id, case.report_ref, case.findings, case.sydney,
+            case.site, case.followup_due, case.no_followup_reason, case.followup_done_on)
 
 
 def all_states(app):
@@ -85,16 +90,18 @@ def all_states(app):
 
 # ---------- seed·조회
 
-def test_seed_has_twelve_independent_cases_in_every_stage(app):
+def test_seed_has_fourteen_independent_cases_in_every_stage(app):
     first = snapshot(app)
     second_app = make_app()
 
-    assert len(first["cases"]) == 12
-    assert len({case.id for case in first["cases"]}) == 12
+    assert first["total"] == 14
+    assert len({case.id for case in first["cases"]}) == 14
     assert first["counts"] == {
-        "HANDOFF_PENDING": 2, "RESULT_PENDING": 3, "DOCTOR_PENDING": 3, "FOLLOWUP": 3, "CLOSED": 1,
+        "HANDOFF_PENDING": 2, "RESULT_PENDING": 4, "DOCTOR_PENDING": 3, "FOLLOWUP": 3, "CLOSED": 2,
     }
-    assert first["flags"] == {"result_delayed": 1, "code_review": 1, "followup_overdue": 1, "followup_soon": 1}
+    assert first["flags"] == {"result_delayed": 1, "code_review": 1, "imported_pending": 0,
+                              "followup_overdue": 1, "followup_soon": 1}
+    assert {case.kind for case in first["cases"]} == {"BIOPSY", "CLO", "STOOL"}
     assert snapshot(second_app)["counts"] == first["counts"]
     assert app.state.dashboard_service is not second_app.state.dashboard_service
 
@@ -105,7 +112,7 @@ def test_stage_filter_preserves_global_counts_and_returns_matching_rows(app, sta
     filtered = snapshot(app, stage=stage)
 
     assert filtered["cases"]
-    assert all(case.stage == stage for case in filtered["cases"])
+    assert all(filtered["stages"][case.id] == stage for case in filtered["cases"])
     assert len(filtered["cases"]) == all_cases["counts"][stage]
     assert filtered["counts"] == all_cases["counts"]
 
@@ -127,7 +134,7 @@ def test_dashboard_is_local_html_and_prevents_browser_caching(client):
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "조직검체" in response.text and "합성" in response.text
-    assert "오늘 씨젠 인계" in response.text
+    assert "오늘 수탁기관 인계" in response.text
     assert "no-store" in response.headers.get("cache-control", "")
     assert not re.search(r"(?:src|href)\s*=\s*['\"]\s*(?:https?:)?//", response.text, re.I)
 
@@ -149,12 +156,12 @@ def test_result_waiting_is_flagged_only_after_the_business_day_threshold(app):
     rows = snapshot(app, stage="RESULT_PENDING")
     texts = sorted(rows["alerts"][case.id].text for case in rows["cases"])
 
-    assert texts == ["위탁 후 1진료일", "위탁 후 2진료일", "위탁 후 4진료일 · 지연"]
+    assert texts == ["검사 후 0진료일", "위탁 후 1진료일", "위탁 후 2진료일", "위탁 후 4진료일 · 지연"]
 
 
 def test_doctor_page_hides_nothing_but_flags_unregistered_codes(app):
     rows = snapshot(app, stage="DOCTOR_PENDING")
-    flagged = [case.result_notation for case in rows["cases"] if case.needs_code_review]
+    flagged = [case.result_notation for case in rows["cases"] if case.needs_review]
 
     assert flagged == ["TEST#1"]
 
@@ -180,12 +187,12 @@ def test_pickup_status_follows_clinic_pickup_times(moment, status, level):
 def test_handoff_moves_all_pending_cases_and_records_three_parties(client, app):
     pending = [case.id for case in snapshot(app, stage="HANDOFF_PENDING")["cases"]]
 
-    response = post(client, app, "/demo/handoff", **handoff_data("4"))
+    response = post(client, app, "/ledger/handoff", **handoff_data("4"))
 
     assert response.status_code == 303
     for case_id in pending:
         case = current_case(app, case_id)
-        assert case.stage == "RESULT_PENDING"
+        assert stage_of(app, case_id) == "RESULT_PENDING"
         assert case.entrusted_on == date(2026, 11, 5)
     pickup = snapshot(app)["pickup"]
     assert pickup["status"] == "DONE"
@@ -210,7 +217,7 @@ def test_handoff_moves_all_pending_cases_and_records_three_parties(client, app):
 def test_wrong_count_or_missing_names_block_the_handoff(client, app, data):
     before = all_states(app)
 
-    response = post(client, app, "/demo/handoff", **data)
+    response = post(client, app, "/ledger/handoff", **data)
 
     assert response.status_code == 422
     assert all_states(app) == before
@@ -218,22 +225,22 @@ def test_wrong_count_or_missing_names_block_the_handoff(client, app, data):
 
 
 def test_count_mismatch_message_shows_both_numbers(client, app):
-    response = post(client, app, "/demo/handoff", **handoff_data("3"))
+    response = post(client, app, "/ledger/handoff", **handoff_data("3"))
 
     assert "장부 4병" in response.text and "확인 3병" in response.text
 
 
 def test_second_handoff_without_pending_cases_is_rejected(client, app):
-    assert post(client, app, "/demo/handoff", **handoff_data("4")).status_code == 303
+    assert post(client, app, "/ledger/handoff", **handoff_data("4")).status_code == 303
 
-    assert post(client, app, "/demo/handoff", **handoff_data("0")).status_code == 400
+    assert post(client, app, "/ledger/handoff", **handoff_data("0")).status_code == 400
 
 
 def test_handed_case_starts_counting_result_days_from_handoff(client):
     later = make_app(datetime(2026, 11, 9, 1, 0, tzinfo=timezone.utc))  # 월요일
     service = later.state.dashboard_service
     with TestClient(later) as test_client:
-        post(test_client, later, "/demo/handoff", **handoff_data("4"))
+        post(test_client, later, "/ledger/handoff", **handoff_data("4"))
     service._clock.moment = datetime(2026, 11, 12, 1, 0, tzinfo=timezone.utc)  # 목요일: 3진료일
     alerts = {service.snapshot()["alerts"][UUID(int=n)].text for n in (1, 2)}
 
@@ -250,11 +257,11 @@ def test_result_codes_are_parsed_and_normalized(client, app):
 
     assert response.status_code == 303
     case = current_case(app, case_id)
-    assert case.stage == "DOCTOR_PENDING"
+    assert stage_of(app, case_id) == "DOCTOR_PENDING"
     assert case.result_notation == "TA#2(L), H#1, INF_P#1"
     assert [f.lesion_count for f in case.findings] == [2, 1, 1]
     assert case.findings[0].modifiers == ("L",)
-    assert case.needs_code_review is False
+    assert case.needs_review is False
 
 
 def test_unregistered_code_is_kept_and_flagged_for_dictionary_review(client, app):
@@ -264,12 +271,12 @@ def test_unregistered_code_is_kept_and_flagged_for_dictionary_review(client, app
 
     case = current_case(app, case_id)
     assert case.result_notation == "NEWCODE#1(zz)"
-    assert case.needs_code_review is True
+    assert case.needs_review is True
     assert "· 검토" not in case.result_notation
 
 
 def test_sydney_grades_are_structured_for_gastric_cases(client, app):
-    case_id = next(c.id for c in snapshot(app, stage="RESULT_PENDING")["cases"] if c.procedure_type == "위내시경")
+    case_id = next(c.id for c in snapshot(app, stage="RESULT_PENDING")["cases"] if c.procedure_type == "stomach" and c.kind == "BIOPSY")
 
     response = post_case(client, app, case_id, "receive",
                          **receive_data(result_notation="CAG#1(im)", sydney_notation="HP-/Neu++/Mon+++/Atr+/IM-"))
@@ -306,7 +313,7 @@ def test_invalid_result_entries_are_rejected_without_changing_the_case(client, a
 
 
 def test_sydney_is_rejected_for_colon_cases(client, app):
-    case_id = next(c.id for c in snapshot(app, stage="RESULT_PENDING")["cases"] if c.procedure_type == "대장내시경")
+    case_id = next(c.id for c in snapshot(app, stage="RESULT_PENDING")["cases"] if c.procedure_type == "colon")
     before = case_state(app, case_id)
 
     response = post_case(client, app, case_id, "receive", **receive_data(sydney_notation="HP-"))
@@ -322,7 +329,7 @@ def test_duplicate_report_reference_is_rejected(client, app):
     response = post_case(client, app, case_id, "receive", **receive_data(report_ref=taken))
 
     assert response.status_code == 422
-    assert current_case(app, case_id).stage == "RESULT_PENDING"
+    assert stage_of(app, case_id) == "RESULT_PENDING"
 
 
 def test_error_page_does_not_echo_the_submitted_text(client, app):
@@ -341,11 +348,11 @@ def test_required_decision_moves_to_followup_and_completion_closes_it(client, ap
     case_id = case_in_stage(app, "DOCTOR_PENDING").id
 
     assert post_case(client, app, case_id, "decide", mode="required", due_date="2030-01-15").status_code == 303
-    assert current_case(app, case_id).stage == "FOLLOWUP"
+    assert stage_of(app, case_id) == "FOLLOWUP"
     assert current_case(app, case_id).followup_due == date(2030, 1, 15)
 
     assert post_case(client, app, case_id, "followup-done", done_on="2026-11-05").status_code == 303
-    assert current_case(app, case_id).stage == "CLOSED"
+    assert stage_of(app, case_id) == "CLOSED"
     assert current_case(app, case_id).followup_done_on == date(2026, 11, 5)
 
 
@@ -356,7 +363,7 @@ def test_no_followup_reason_closes_without_a_date(client, app):
 
     assert response.status_code == 303
     case = current_case(app, case_id)
-    assert case.stage == "CLOSED"
+    assert stage_of(app, case_id) == "CLOSED"
     assert case.followup_due is None
     assert case.no_followup_reason == "합성 원장 지시 기록"
 
@@ -440,8 +447,8 @@ def test_wrong_csrf_token_cannot_change_anything(client, app, token):
     before = all_states(app)
 
     for path, data in [
-        (f"/demo/cases/{case_id}/receive", receive_data()),
-        ("/demo/handoff", handoff_data("4")),
+        (f"/ledger/cases/{case_id}/receive", receive_data()),
+        ("/ledger/handoff", handoff_data("4")),
     ]:
         response = client.post(path, data={"csrf_token": token, **data}, follow_redirects=False)
         assert response.status_code == 403
@@ -470,12 +477,90 @@ def test_staff_text_is_autoescaped_when_rendered(client, app):
 
 def test_reset_requires_csrf_and_restores_the_seed(client, app):
     original = snapshot(app)["counts"].copy()
-    assert post(client, app, "/demo/handoff", **handoff_data("4")).status_code == 303
+    assert post(client, app, "/ledger/handoff", **handoff_data("4")).status_code == 303
     changed = snapshot(app)["counts"].copy()
 
-    denied = client.post("/demo/reset", data={"csrf_token": "INVALID"}, follow_redirects=False)
+    denied = client.post("/ledger/reset", data={"csrf_token": "INVALID"}, follow_redirects=False)
     assert denied.status_code == 403
     assert snapshot(app)["counts"] == changed
-    assert post(client, app, "/demo/reset").status_code == 303
+    assert post(client, app, "/ledger/reset").status_code == 303
     assert snapshot(app)["counts"] == original
     assert snapshot(app)["pickup"]["handed_today"] == []
+
+
+# ---------- 새 검사 접수
+
+def register_data(**overrides: str) -> dict[str, str]:
+    data = {"kind": "BIOPSY", "chart_no": "N-0001", "patient_name": "새환자", "exam_date": "2026-11-05",
+            "procedure_type": "colon", "specimen_count": "2", "sex": "M", "age": "55", "site": ""}
+    return {**data, **overrides}
+
+
+@pytest.mark.parametrize(("kind", "expected"), [
+    ("BIOPSY", "HANDOFF_PENDING"), ("STOOL", "HANDOFF_PENDING"), ("CLO", "RESULT_PENDING"),
+])
+def test_register_puts_new_exam_in_the_right_first_stage(client, app, kind, expected):
+    response = post(client, app, "/ledger/register", **register_data(kind=kind))
+
+    assert response.status_code == 303
+    entry_id = UUID(response.headers["location"].split("selected_id=")[1].split("&")[0])
+    assert stage_of(app, entry_id) == expected
+    entry = current_case(app, entry_id)
+    assert (entry.chart_no, entry.patient_name, entry.source) == ("N-0001", "새환자", "MANUAL")
+    if kind == "CLO":
+        assert entry.procedure_type == "stomach"
+
+
+def test_registered_biopsy_joins_todays_handoff_count(client, app):
+    post(client, app, "/ledger/register", **register_data())
+
+    pickup = snapshot(app)["pickup"]
+    assert (pickup["pending_cases"], pickup["pending_specimens"]) == (3, 6)
+
+
+@pytest.mark.parametrize("data", [
+    register_data(kind="LAB"),
+    register_data(chart_no=""),
+    register_data(chart_no="12 34"),
+    register_data(patient_name=" "),
+    register_data(exam_date="2026-11-06"),
+    register_data(exam_date=""),
+    register_data(procedure_type=""),
+    register_data(procedure_type="knee"),
+    register_data(specimen_count=""),
+    register_data(specimen_count="0"),
+    register_data(age="abc"),
+    register_data(sex="X"),
+    register_data(chart_no="T-0001", patient_name="다른이름"),
+])
+def test_invalid_registration_adds_nothing(client, app, data):
+    before = snapshot(app)["total"]
+
+    assert post(client, app, "/ledger/register", **data).status_code == 422
+    assert snapshot(app)["total"] == before
+
+
+def test_registration_form_and_kind_filter_render(client):
+    form = client.get("/dashboard?new=1")
+    assert form.status_code == 200 and "새 검사 접수" in form.text and 'name="kind"' in form.text
+    clo = client.get("/dashboard?kind=CLO")
+    assert clo.status_code == 200 and "T-0013" in clo.text and "T-0001" not in clo.text
+    assert client.get("/dashboard?kind=LAB").status_code == 422
+
+
+def test_list_shows_masked_names_but_detail_shows_full_name_for_entry(client, app):
+    page = client.get("/dashboard?stage=HANDOFF_PENDING").text
+
+    assert "테****1" in page  # 목록: 가운데 가림
+    detail = client.get(f"/dashboard?selected_id={UUID(int=5)}").text
+    assert "테스트환자5" in detail  # 입력 대상 확인용 상세
+
+
+def test_long_lists_are_paginated(app):
+    service = app.state.dashboard_service
+    for number in range(60):
+        service.register("CLO", f"P-{number:04}", f"페이지{number}", date(2026, 11, 5))
+
+    first = snapshot(app, stage="RESULT_PENDING")
+    second = snapshot(app, stage="RESULT_PENDING", page=2)
+    assert (first["pages"], len(first["cases"]), len(second["cases"])) == (2, 50, first["matched"] - 50)
