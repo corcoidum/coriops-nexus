@@ -34,7 +34,10 @@ def current_actor(request: Request) -> Actor:
 
 
 def client_ip(request: Request) -> str:
-    # 프록시 헤더(X-Forwarded-For)는 신뢰하지 않는다(trusted_proxy_cidrs 비어 있음).
+    # DB 모드에서는 접속 대역 검사(app/kernel/network.py)가 신뢰 프록시를 반영해 정한 주소를 쓴다.
+    resolved = getattr(request.state, "client_ip", None)
+    if resolved:
+        return resolved
     return request.client.host if request.client else "unknown"
 
 

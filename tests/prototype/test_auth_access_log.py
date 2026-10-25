@@ -69,8 +69,11 @@ def make_staff(auth, username, roles, must_change=False):
                              must_change_password=must_change)
 
 
-def client_for(app) -> TestClient:
-    return TestClient(app, base_url="https://testserver")
+OFFICE_PC = ("192.168.0.20", 50000)  # config/security.yaml의 [가정] 업무 PC 대역 안
+
+
+def client_for(app, client=OFFICE_PC) -> TestClient:
+    return TestClient(app, base_url="https://testserver", client=client)
 
 
 def login(client, username, password=PASSWORD):
@@ -400,3 +403,30 @@ def test_lab_demo_tab_is_not_mounted_in_db_mode(parts):
         home = client.get("/").text
         assert "오늘 할 일" in home and "조직검체 장부 열기" in home
         assert "혈액검체 장부 열기" not in home and "critical-alert" not in home
+
+
+# ---------- 접속 대역 제한 (고시 제6조①)
+
+def test_outside_network_is_denied_and_logged(parts, clean):
+    app, auth, _, _ = parts
+    make_staff(auth, "admin1", ["ADMIN"])
+    with client_for(app, client=("10.0.0.5", 50000)) as client:
+        response = client.get("/login")
+        assert response.status_code == 403
+        assert "10.0.0.5" in response.text and "원내 업무 PC" in response.text
+        # 헤더로 원내 주소를 사칭해도 통과하지 못하고 로그인도 시도할 수 없다.
+        spoofed = client.post("/login", data={"username": "admin1", "password": PASSWORD},
+                              headers={"X-Forwarded-For": "192.168.0.20"}, follow_redirects=False)
+        assert spoofed.status_code == 403 and "coriops_session" not in spoofed.cookies
+    denied = [row for row in logs(clean) if row.target_type == "network"]
+    assert len(denied) == 2
+    assert {(row.action, row.outcome, row.client_ip, row.actor_label) for row in denied} == {
+        ("DENIED", "DENIED", "10.0.0.5", "anonymous")}
+
+
+def test_office_pc_address_is_recorded_in_access_log(parts, clean):
+    app, auth, _, _ = parts
+    make_staff(auth, "admin1", ["ADMIN"])
+    with client_for(app) as client:
+        assert login(client, "admin1").status_code == 303
+    assert logs(clean)[-1].client_ip == OFFICE_PC[0]
