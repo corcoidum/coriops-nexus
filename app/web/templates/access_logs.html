@@ -1,0 +1,42 @@
+{% extends "ledger_base.html" %}
+{% block crumb %}접속기록 점검{% endblock %}
+{% block content %}
+    <div class="page-heading"><div><span class="eyebrow">ACCESS LOG</span><h1>접속기록 점검</h1><p>누가·언제·어디서·어떤 환자(차트번호)에 대해·무엇을 했는지 봅니다. 기록은 추가만 되고 고치거나 지울 수 없습니다. 이 화면을 연 것도 기록됩니다.</p></div></div>
+    <div class="excel-grid">
+      <section class="panel excel-card">
+        <span class="eyebrow">INTEGRITY</span><h2>위·변조 검사</h2>
+        {% if chain.ok %}<p class="alert-chip">✓ 정상 · 전체 {{ chain.count }}행 해시 체인 일치</p>
+        {% else %}<p class="alert-chip danger">✗ {{ chain.broken_at }}번째 기록부터 체인이 맞지 않습니다. 사고 대응 절차를 시작하세요.</p>{% endif %}
+        {% if chain.last %}<p class="field-help">마지막 순번 {{ chain.last.sequence_no }} · 해시 {{ chain.last.hash[:16] }}… 이 값을 점검 기록에 고정합니다.</p>{% endif %}
+        <h3>대량 조회 경고</h3>
+        <p class="field-help">{{ policy.bulk_window_minutes }}분 안에 서로 다른 환자 {{ policy.bulk_threshold }}명 초과 상세 조회·변경 [가정 Q13]</p>
+        {% for alert in alerts %}<p class="alert-chip warn">{{ alert.actor_label }} · 최대 {{ alert.distinct }}명 · {{ alert.from.astimezone(kst).strftime('%m.%d %H:%M') }}부터</p>{% else %}<p class="field-help">이 기간에 경고 없음</p>{% endfor %}
+      </section>
+      <section class="panel excel-card">
+        <span class="eyebrow">REVIEW</span><h2>점검 완료 기록</h2>
+        <form action="/privacy/access-logs/review" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="start" value="{{ first.isoformat() }}"><input type="hidden" name="end" value="{{ last.isoformat() }}">
+          <label for="note">{{ first.strftime('%Y.%m.%d') }} ~ {{ last.strftime('%Y.%m.%d') }} 점검 의견</label><input id="note" name="note" maxlength="200" required placeholder="예: 이상 없음 / 대량 조회 사유 확인함" autocomplete="off">
+          <p class="field-help">환자 이름·연락처는 쓰지 않습니다.</p>
+          <button class="button primary full" type="submit">점검 완료 기록</button>
+        </form>
+        {% if reviews %}<ul class="plain-list">{% for review in reviews %}<li>{{ review.reviewed_at.astimezone(kst).strftime('%Y.%m.%d %H:%M') }} · 순번 {{ review.last_sequence }}까지 · 체인 {{ '정상' if review.chain_ok else '이상' }} · 경고 {{ review.bulk_alerts }} · {{ review.note }}</li>{% endfor %}</ul>{% endif %}
+      </section>
+    </div>
+    <section class="panel preview-panel">
+      <div class="panel-header"><div><h2>기록<span class="count-tag">{{ total }}</span></h2><p>최근 순서. 목록 조회는 이름을 가린 화면, 상세 조회는 전체 이름이 보인 화면입니다.</p></div>
+        <form class="search-form" action="/privacy/access-logs" method="get">
+          <input type="date" name="start" value="{{ first.isoformat() }}" aria-label="시작일"><input type="date" name="end" value="{{ last.isoformat() }}" aria-label="종료일">
+          <input name="actor" maxlength="40" value="{{ filters.actor }}" placeholder="아이디" aria-label="아이디">
+          <input name="subject" maxlength="20" value="{{ filters.subject }}" placeholder="차트번호" aria-label="차트번호">
+          <select name="action" aria-label="업무"><option value="">전체 업무</option>{% for key, label in action_labels.items() %}<option value="{{ key }}" {% if filters.action == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+          <button class="button secondary" type="submit">조회</button>
+        </form>
+      </div>
+      <div class="table-scroll"><table><thead><tr><th>순번</th><th>일시</th><th>아이디</th><th>접속지</th><th>업무</th><th>정보주체(차트번호)</th><th>대상</th><th>건수</th><th>결과</th></tr></thead><tbody>
+        {% for row in rows %}<tr><td>{{ row.sequence_no }}</td><td>{{ row.at.astimezone(kst).strftime('%Y.%m.%d %H:%M:%S') }}</td><td>{{ row.actor_label }}</td><td>{{ row.client_ip }}</td><td>{{ row.action_label }}</td><td>{{ row.subject_ref or '—' }}</td><td class="cell-sub">{{ row.target_type }}</td><td>{{ row.detail_count if row.detail_count is not none else '' }}</td><td>{{ row.outcome }}</td></tr>
+        {% else %}<tr><td colspan="9" class="empty-state">조건에 맞는 기록이 없습니다.</td></tr>{% endfor %}
+      </tbody></table></div>
+      {% if pages > 1 %}<div class="table-footer"><span class="pager">{% if page > 1 %}<a href="?start={{ first.isoformat() }}&amp;end={{ last.isoformat() }}&amp;actor={{ filters.actor|urlencode }}&amp;subject={{ filters.subject|urlencode }}&amp;action={{ filters.action }}&amp;page={{ page - 1 }}">‹ 이전</a>{% endif %} {{ page }} / {{ pages }} {% if page < pages %}<a href="?start={{ first.isoformat() }}&amp;end={{ last.isoformat() }}&amp;actor={{ filters.actor|urlencode }}&amp;subject={{ filters.subject|urlencode }}&amp;action={{ filters.action }}&amp;page={{ page + 1 }}">다음 ›</a>{% endif %}</span></div>{% endif %}
+    </section>
+{% endblock %}

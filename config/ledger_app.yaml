@@ -1,0 +1,41 @@
+version: '0.3-prototype'
+# 원장 결재·2단계 보안 조치(docs/privacy/internal-security-proposal.md) 전에는 실제 환자 자료를 넣지 않는다.
+status: REQUIRES_OWNER_APPROVAL_BEFORE_REAL_DATA
+# 장부 종류. 시트 이름은 기존 엑셀 파일의 탭 이름이다.
+kinds:
+  BIOPSY: {label: 조직검사, sheet_names: [Biopsy, 조직검체장부], handoff: true, result_format: codes}
+  # [가정] CLO는 원내 판독이라 씨젠 인계가 없다. 실제와 다르면 handoff를 true로 바꾼다.
+  CLO: {label: CLO, sheet_names: [CLO], handoff: false, result_format: short}
+  # [가정] Stool은 수탁기관으로 보낸다. 실제와 다르면 handoff를 false로 바꾼다.
+  STOOL: {label: Stool, sheet_names: [Stool], handoff: true, result_format: short}
+# 엑셀 헤더 → 저장 필드. 세 시트가 같은 사전을 쓴다. 헤더 이름이 다르면 여기에 별칭을 추가한다.
+fields:
+  exam_date: [검사일]
+  report_ref: [접수번호]
+  chart_no: [차트번호]
+  patient_name: [수진자명, 이름, 성명]
+  age: [나이]
+  sex: [성별]
+  entrusted_on: [위탁일]
+  registered_by: [접수인]
+  procedure_type: [검사종류]
+  site: [검사위치]
+  specimen_count: [검체수량]
+  handed_by: [인계인]
+  received_by: [인수인]
+  reported_on: [결과보고일]
+  result: [조직검사결과, 검사결과, 결과]
+  sydney: [특이소견]
+required_fields: [exam_date, chart_no, patient_name]
+# 값을 저장·표시하지 않는 열(헤더 이름만 보고에 표시)
+ignored_headers: [비고란, 비고, 연락처, 전화번호, 휴대전화, 주민번호, 주민등록번호, 주소, 보험정보]
+procedure_types: {stomach: 위내시경, colon: 대장내시경}
+sexes: {M: M, F: F, 남: M, 여: F}
+# CLO·Stool 결과는 짧은 판정 코드만(예: +, -, 양성, 음성). 문장은 검토 대상으로 돌린다.
+short_result_pattern: '^[0-9A-Za-z가-힣+\-/.()# ]{1,20}$'
+max_rows_per_sheet: 3000
+export:
+  # 지정 원내 폴더. 컨테이너에서는 /exports, 호스트 폴더는 .env의 CORIOPS_EXPORT_HOST_DIR로 연결한다.
+  directory_env: CORIOPS_EXPORT_DIR
+  file_prefix: 조직검체장부
+  followup_headers: [재검 예정일, 재검 상태]

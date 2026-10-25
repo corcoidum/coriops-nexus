@@ -1,81 +1,184 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>조직검체 업무 · CoriOps Nexus</title>
-  <link rel="stylesheet" href="/static/dashboard.css">
-</head>
-<body>
-<aside class="sidebar">
-  <a class="brand" href="/dashboard"><span class="brand-mark">C</span><span>CoriOps<span class="brand-sub">NEXUS</span></span></a>
-  <div class="sidebar-section">WORKSPACE</div>
-  <a class="nav-item active" href="/dashboard"><span aria-hidden="true">▦</span> 조직검체 업무</a>
-  <div class="sidebar-note"><span class="status-dot"></span> 수동 입력으로 시작하기<p>씨젠 확인은 평소대로,<br>남은 업무는 한 화면에서.</p></div>
-  <div class="sidebar-bottom"><span class="demo-label">합성 자료 8건</span><form action="/demo/reset" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="reset-button" type="submit">↻ 시연 처음부터</button></form></div>
-</aside>
-<main class="workspace">
-  <header class="topbar"><span>진료 지원 <span class="breadcrumb">/</span> 조직병리 업무</span><span class="date">{{ today.strftime('%Y.%m.%d') }}</span></header>
-  <div class="page-body">
-    <div class="page-heading"><div><span class="eyebrow">TODAY'S WORKFLOW</span><h1>오늘 확인할 조직검체 업무</h1><p>직접 확인한 결과를 적고, 다음에 할 일을 이어갑니다.</p></div><span class="preview-badge"><span class="status-dot"></span> 첫 화면 미리보기</span></div>
-    <div class="demo-banner"><strong>합성 자료로 눌러보세요.</strong><span>실제 자료 입력용이 아닙니다. 시연을 처음부터 시작하거나 앱을 재시작하면 입력이 초기화됩니다.</span></div>
+{% extends "ledger_base.html" %}
+{# 매크로 기본값에서는 화면 변수를 읽지 못하므로 none이면 본문에서 현재 값으로 채운다. #}
+{% macro link(stage=none, kind=none, q=none, page=1, selected_id=none, new=False, due=none) -%}
+{%- set s = stage if stage is not none else current.stage -%}
+{%- set k = kind if kind is not none else current.kind -%}
+{%- set text = q if q is not none else current.query -%}
+{%- set d = due if due is not none else current.due -%}
+/dashboard?stage={{ s }}&amp;kind={{ k }}{% if text %}&amp;q={{ text|urlencode }}{% endif %}{% if page > 1 %}&amp;page={{ page }}{% endif %}{% if selected_id %}&amp;selected_id={{ selected_id }}{% endif %}{% if new %}&amp;new=1{% endif %}{% if d and s == 'FOLLOWUP' %}&amp;due={{ d }}{% if d == 'range' %}&amp;due_from={{ current.due_from }}&amp;due_to={{ current.due_to }}{% endif %}{% endif %}
+{%- endmacro %}
+{% block content %}
+    <div class="page-heading"><div><span class="eyebrow">TODAY'S LEDGER</span><h1>오늘의 조직검체 장부</h1><p>접수 → 인계 → 결과 → 원장 지시 → 재검을 한 화면에서 이어 갑니다.</p></div><a class="button primary" href="{{ link(new=True) }}">＋ 새 검사 접수</a></div>
+
+    <section class="panel handoff-panel level-{{ pickup.level }}" aria-labelledby="handoff-title">
+      <div class="handoff-summary">
+        <span class="eyebrow">TODAY'S HANDOFF</span>
+        <h2 id="handoff-title">오늘 수탁기관 인계</h2>
+        <div class="handoff-count"><strong>{{ pickup.pending_cases }}</strong>건 · <strong>{{ pickup.pending_specimens }}</strong>병 인계 대기</div>
+        <span class="alert-chip {{ pickup.level }}">{{ pickup.text }}</span>
+        {% for record in pickup.handed_today %}<p class="handoff-done">✓ {{ record.handed_time }} {{ record.case_count }}건 {{ record.specimen_count }}병 · 접수 {{ record.registered_by }} → 인계 {{ record.handed_by }} → 인수 {{ record.receiver_name }}</p>{% endfor %}
+      </div>
+      {% if pickup.pending_cases %}
+      <form class="handoff-form" action="/ledger/handoff" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div><label for="registered_by">접수인</label><input id="registered_by" name="registered_by" maxlength="20" required value="{{ handoff_defaults.registered_by }}" autocomplete="off"></div>
+        <div><label for="handed_by">인계인</label><input id="handed_by" name="handed_by" maxlength="20" required value="{{ handoff_defaults.handed_by }}" autocomplete="off"></div>
+        <div><label for="receiver_name">인수인</label><input id="receiver_name" name="receiver_name" maxlength="20" required value="{{ handoff_defaults.receiver_name }}" autocomplete="off"></div>
+        <div><label for="confirmed_count">직접 센 병 수</label><input id="confirmed_count" name="confirmed_count" inputmode="numeric" pattern="[0-9]*" maxlength="3" required placeholder="장부 {{ pickup.pending_specimens }}병" autocomplete="off"></div>
+        <button class="button primary" type="submit">인계 완료 기록</button>
+      </form>
+      {% endif %}
+    </section>
+
+    <nav class="kind-tabs" aria-label="검사 종류">
+      <a class="{% if kind == 'ALL' %}active{% endif %}" href="{{ link(kind='ALL') }}">전체</a>
+      {% for key, label in kind_labels.items() %}<a class="{% if kind == key %}active{% endif %}" href="{{ link(kind=key) }}">{{ label }}</a>{% endfor %}
+    </nav>
+
     <section class="stat-grid" aria-label="업무 단계별 건수">
       {% for key, label in stage_labels.items() %}
-      <a href="/dashboard?stage={{ key }}" class="stat-card {{ key|lower }} {% if stage == key %}selected{% endif %}" {% if stage == key %}aria-current="page"{% endif %}>
+      <a href="{% if key == 'FOLLOWUP' and flags.followup_due %}{{ link(stage=key, due='due') }}{% else %}{{ link(stage=key, due='') }}{% endif %}" class="stat-card {{ key|lower }} {% if stage == key %}selected{% endif %}" {% if stage == key %}aria-current="page"{% endif %}>
         <div class="stat-top"><span>{{ label }}</span><span class="stat-step">0{{ loop.index }}</span></div>
-        <div class="stat-number">{{ counts[key] }}<span>건</span><span class="stat-arrow" aria-hidden="true">↗</span></div>
-        <div class="stat-caption">{% if key == 'RESULT_PENDING' %}씨젠 전체 결과 확인 후 입력{% elif key == 'DOCTOR_PENDING' %}원장이 정한 날짜를 기록{% elif key == 'NOTIFY_PENDING' %}환자에게 안내할 업무{% else %}안내 기록을 마친 업무{% endif %}</div>
+        <div class="stat-number">{{ counts[key] }}<span>건</span></div>
+        <div class="stat-caption">
+          {% if key == 'HANDOFF_PENDING' %}{{ pickup.text }}
+          {% elif key == 'RESULT_PENDING' %}{% if flags.result_delayed %}<span class="alert-chip danger">지연 {{ flags.result_delayed }}</span>{% else %}{{ delay_days }}진료일 초과 시 지연{% endif %}
+          {% elif key == 'DOCTOR_PENDING' %}{% if flags.code_review %}<span class="alert-chip warn">검토 {{ flags.code_review }}</span> {% endif %}{% if flags.imported_pending %}<span class="alert-chip">과거 {{ flags.imported_pending }}</span>{% endif %}{% if not flags.code_review and not flags.imported_pending %}원장이 정한 날짜를 기록{% endif %}
+          {% elif key == 'FOLLOWUP' %}{% if flags.followup_due %}<span class="alert-chip danger">도래 {{ flags.followup_due }}</span> {% endif %}{% if flags.followup_soon %}<span class="alert-chip warn">{{ window_days }}일 이내 {{ flags.followup_soon }}</span>{% endif %}{% if not flags.followup_due and not flags.followup_soon %}임박한 재검 없음{% endif %}
+          {% else %}보관 {{ retention.years }}년{% if retention.expired %} · <span class="alert-chip warn">경과 후보 {{ retention.expired }}</span>{% endif %}{% endif %}
+        </div>
       </a>
       {% endfor %}
     </section>
+
     <div class="work-grid">
       <section class="panel worklist">
-        <div class="panel-header"><div><h2>{% if stage == 'ALL' %}전체 업무{% else %}{{ stage_labels[stage] }}{% endif %}<span class="count-tag">{{ cases|length }}</span></h2><p>행을 선택하면 오른쪽에서 다음 업무를 기록합니다.</p></div><a class="text-link" href="/dashboard">전체 보기</a></div>
-        <div class="table-scroll"><table><thead><tr><th scope="col">시연 대상</th><th scope="col">검사</th><th scope="col">진행 상태</th><th scope="col">다음 업무</th></tr></thead><tbody>
-        {% for case in cases %}
-          <tr class="{% if selected and case.id == selected.id %}selected-row{% endif %}"><td><a class="patient-link" href="/dashboard?stage={{ stage }}&amp;selected_id={{ case.id }}">{{ case.display_name }}</a><span class="cell-sub">{{ case.chart_no }}</span></td><td><span>{{ case.procedure_type }}</span><span class="cell-sub">{{ case.procedure_date.strftime('%m.%d') }} · 검체 {{ case.specimen_count }}개</span></td><td><span class="stage-pill {{ case.stage|lower }}">{{ case.stage_label }}</span></td><td><a class="row-action" href="/dashboard?stage={{ stage }}&amp;selected_id={{ case.id }}">{{ case.action_label }} <span aria-hidden="true">›</span></a></td></tr>
-        {% else %}<tr><td colspan="4" class="empty-state">이 단계에 남은 업무가 없습니다.</td></tr>{% endfor %}
+        <div class="panel-header">
+          <div><h2>{% if stage == 'ALL' %}전체 장부{% elif due %}재검 대상 · {{ due_labels[due] }}{% else %}{{ stage_labels[stage] }}{% endif %}<span class="count-tag">{{ matched }}</span></h2><p>{% if due and due_window[1] %}재검일 {% if due_window[0] %}{{ due_window[0].strftime('%Y.%m.%d') }}{% else %}처음{% endif %} ~ {{ due_window[1].strftime('%Y.%m.%d') }}, 재검일 순서{% else %}행을 선택하면 오른쪽에서 다음 업무를 기록합니다.{% endif %}</p></div>
+          <form class="search-form" action="/dashboard" method="get" role="search">
+            <input type="hidden" name="stage" value="{{ stage }}"><input type="hidden" name="kind" value="{{ kind }}">{% if due %}<input type="hidden" name="due" value="{{ due }}">{% if due == 'range' %}<input type="hidden" name="due_from" value="{{ due_from }}"><input type="hidden" name="due_to" value="{{ due_to }}">{% endif %}{% endif %}
+            <label class="visually-hidden" for="q">차트번호·이름·접수번호·결과코드 검색</label>
+            <input id="q" name="q" maxlength="30" value="{{ query }}" placeholder="차트번호·이름·접수번호·결과코드" autocomplete="off">
+            <button class="button secondary" type="submit">검색</button>
+            {% if query or stage != 'ALL' or kind != 'ALL' %}<a class="text-link" href="/dashboard">전체</a>{% endif %}
+          </form>
+        </div>
+        {% if stage == 'FOLLOWUP' %}
+        <div class="due-bar">
+          <nav class="due-tabs" aria-label="재검 기간">
+            {% for key, label in due_labels.items() if key != 'range' %}<a class="{% if due == key %}active{% endif %}" href="{{ link(due=key) }}">{{ label }}{% if key == 'due' and flags.followup_due %} <strong>{{ flags.followup_due }}</strong>{% endif %}</a>{% endfor %}
+          </nav>
+          <form class="due-range" action="/dashboard" method="get">
+            <input type="hidden" name="stage" value="FOLLOWUP"><input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="due" value="range">{% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+            <label class="visually-hidden" for="due_from">시작일</label><input type="date" id="due_from" name="due_from" required value="{{ due_from or '' }}">
+            <span>~</span>
+            <label class="visually-hidden" for="due_to">종료일</label><input type="date" id="due_to" name="due_to" required value="{{ due_to or '' }}">
+            <button class="button secondary {% if due == 'range' %}active{% endif %}" type="submit">기간 보기</button>
+          </form>
+          {% if can_export and export_ready and matched %}
+          <form action="/ledger/export/followups" method="post" class="due-export">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="q" value="{{ query }}"><input type="hidden" name="due" value="{{ due }}"><input type="hidden" name="due_from" value="{{ due_from or '' }}"><input type="hidden" name="due_to" value="{{ due_to or '' }}">
+            <button class="button primary" type="submit">이 목록 엑셀 저장 ({{ matched }}명)</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% set bulk = stage == 'DOCTOR_PENDING' and cases %}
+        {% if bulk %}
+        <form id="bulk-form" class="bulk-bar" action="/ledger/bulk-decide" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <span>선택한 건을 원장 지시로</span>
+          <label class="visually-hidden" for="bulk-reason">재검 불필요 사유</label>
+          <input id="bulk-reason" name="reason" maxlength="120" required placeholder="재검 불필요 사유 (원장 지시)" autocomplete="off">
+          <button class="button secondary" type="submit">선택 건 재검 불필요 기록</button>
+        </form>
+        {% endif %}
+        <div class="table-scroll"><table><thead><tr>{% if bulk %}<th scope="col"><span class="visually-hidden">선택</span></th>{% endif %}<th scope="col">대상</th><th scope="col">검사</th><th scope="col">진행 상태</th><th scope="col">결과</th><th scope="col">다음 업무</th></tr></thead><tbody>
+        {% for case in cases %}{% set alert = alerts[case.id] %}{% set case_stage = stages[case.id] %}
+          <tr class="{% if selected and case.id == selected.id and not new %}selected-row{% endif %}">
+            {% if bulk %}<td class="check-cell"><input type="checkbox" name="entry_ids" value="{{ case.id }}" form="bulk-form" aria-label="{{ case.chart_no }} 선택"></td>{% endif %}
+            <td><a class="patient-link" href="{{ link(page=page, selected_id=case.id) }}">{{ case.display_name }}</a><span class="cell-sub">{{ case.chart_no }}{% if case.report_ref %} · {{ case.report_ref }}{% endif %}</span></td>
+            <td><span>{{ kind_labels[case.kind] }}{% if case.procedure_label %} · {{ case.procedure_label }}{% endif %}</span><span class="cell-sub">{{ case.exam_date.strftime('%Y.%m.%d') }}{% if case.specimen_count %} · {{ case.specimen_count }}병{% endif %}</span></td>
+            <td><span class="stage-pill {{ case_stage|lower }}">{{ stage_labels[case_stage] }}</span><span class="cell-sub alert-text {{ alert.level }}">{{ alert.text }}</span></td>
+            <td>{% if case.result_notation %}<span class="finding-text">{{ case.result_notation }}</span>{% else %}<span class="cell-sub">—</span>{% endif %}</td>
+            <td><a class="row-action" href="{{ link(page=page, selected_id=case.id) }}">{{ stage_actions[case_stage] }} <span aria-hidden="true">›</span></a></td>
+          </tr>
+        {% else %}<tr><td colspan="6" class="empty-state">조건에 맞는 업무가 없습니다.</td></tr>{% endfor %}
         </tbody></table></div>
-        <div class="table-footer"><span>입력 예시 {{ cases|length }}건 / 전체 {{ total }}건</span><span>결과 해석·재검 시점은 원장이 결정합니다.</span></div>
+        <div class="table-footer"><span>{{ matched }}건 중 {{ cases|length }}건 · 전체 {{ total }}건</span>
+          {% if pages > 1 %}<span class="pager">{% if page > 1 %}<a href="{{ link(page=page - 1) }}">‹ 이전</a>{% endif %} {{ page }} / {{ pages }} {% if page < pages %}<a href="{{ link(page=page + 1) }}">다음 ›</a>{% endif %}</span>{% else %}<span>결과 해석·재검 시점은 원장이 결정합니다.</span>{% endif %}</div>
       </section>
+
       <section class="panel detail" aria-labelledby="detail-title">
-      {% if selected %}
-        <div class="detail-header"><span class="eyebrow">NEXT ACTION</span><h2 id="detail-title">{{ selected.action_label }}</h2><div class="detail-person">{{ selected.display_name }}<span>{{ selected.procedure_type }} · {{ selected.chart_no }}</span></div></div>
+      {% if new %}
+        <div class="detail-header"><span class="eyebrow">NEW EXAM</span><h2 id="detail-title">새 검사 접수</h2><div class="detail-person">검사 직후 장부 한 줄을 만듭니다<span>같은 차트번호는 이름이 같아야 합니다.</span></div></div>
         <div class="detail-body">
-          <div class="step-track" aria-label="현재 단계"><span class="step-done">1</span><i></i><span class="{% if selected.stage != 'RESULT_PENDING' %}step-done{% endif %}">2</span><i></i><span class="{% if selected.stage in ['NOTIFY_PENDING', 'DONE'] %}step-done{% endif %}">3</span><i></i><span class="{% if selected.stage == 'DONE' %}step-done{% endif %}">4</span></div>
-          {% if selected.stage == 'RESULT_PENDING' %}
-          <p class="form-intro">씨젠에 전체 결과가 공개되면, 평소 장부에 쓰던 표현으로 입력합니다.</p>
-          <form action="/demo/cases/{{ selected.id }}/receive" method="post">
+          <form action="/ledger/register" method="post" class="register-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label for="result_summary">조직검사결과 <span class="required">필수</span></label><input id="result_summary" name="result_summary" maxlength="120" required placeholder="예: 합성 결과 요약" autocomplete="off"><p class="field-help">약어를 미리 등록할 필요가 없습니다.</p>
-            <label for="site_summary">검사위치 <span class="required">필수</span></label><input id="site_summary" name="site_summary" maxlength="80" required placeholder="예: 합성 검사위치" autocomplete="off">
+            <fieldset class="segmented"><legend>검사 종류 <span class="required">필수</span></legend>
+              {% for key, label in kind_labels.items() %}<label><input type="radio" name="kind" value="{{ key }}" {% if loop.first %}checked{% endif %} required> {{ label }}</label>{% endfor %}
+            </fieldset>
+            <div class="field-row"><div><label for="chart_no">차트번호 <span class="required">필수</span></label><input id="chart_no" name="chart_no" maxlength="20" required inputmode="numeric" autocomplete="off"></div>
+              <div><label for="patient_name">수진자명 <span class="required">필수</span></label><input id="patient_name" name="patient_name" maxlength="30" required autocomplete="off"></div></div>
+            <div class="field-row"><div><label for="exam_date">검사일 <span class="required">필수</span></label><input type="date" id="exam_date" name="exam_date" required value="{{ today.isoformat() }}" max="{{ today.isoformat() }}"></div>
+              <div><label for="procedure_type">검사종류</label><select id="procedure_type" name="procedure_type"><option value="">선택 (조직검사 필수)</option>{% for key, label in procedure_labels.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div></div>
+            <div class="field-row three"><div><label for="specimen_count">검체수량</label><input id="specimen_count" name="specimen_count" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="병" autocomplete="off"></div>
+              <div><label for="sex">성별</label><select id="sex" name="sex"><option value="">-</option><option value="M">M</option><option value="F">F</option></select></div>
+              <div><label for="age">나이</label><input id="age" name="age" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off"></div></div>
+            <label for="site">검사위치 <span class="optional">선택</span></label><input id="site" name="site" maxlength="80" placeholder="예: antrum, posterior wall" autocomplete="off">
+            <p class="field-help">CLO는 인계 없이 바로 결과 대기로, 조직검사·Stool은 오늘 인계 목록에 올라갑니다.</p>
+            <button class="button primary full" type="submit">접수 기록 <span aria-hidden="true">→</span></button>
+          </form>
+        </div>
+      {% elif selected %}{% set alert = alerts[selected.id] %}{% set sel_stage = stages[selected.id] %}
+        <div class="detail-header"><span class="eyebrow">NEXT ACTION</span><h2 id="detail-title">{{ stage_actions[sel_stage] }}</h2><div class="detail-person">{{ selected.patient_name }}<span>{{ kind_labels[selected.kind] }}{% if selected.procedure_label %} · {{ selected.procedure_label }}{% endif %} · {{ selected.chart_no }}{% if selected.specimen_count %} · {{ selected.specimen_count }}병{% endif %}</span></div></div>
+        <div class="detail-body">
+          <div class="step-track" aria-label="현재 단계">{% set order = ['HANDOFF_PENDING', 'RESULT_PENDING', 'DOCTOR_PENDING', 'FOLLOWUP', 'CLOSED'] %}{% for key in order %}{% if not loop.first %}<i></i>{% endif %}<span class="{% if order.index(key) <= order.index(sel_stage) %}step-done{% endif %}">{{ loop.index }}</span>{% endfor %}</div>
+          <p class="alert-chip {{ alert.level }}">{{ alert.text }}</p>
+          {% if sel_stage == 'HANDOFF_PENDING' %}
+          <p class="form-intro">위쪽 <strong>오늘 수탁기관 인계</strong>에서 직접 센 병 수를 입력하면 인계 대기 검체가 한 번에 결과 대기로 넘어갑니다.</p>
+          {% elif sel_stage == 'RESULT_PENDING' %}
+          {% set codes = selected.kind == 'BIOPSY' %}
+          <p class="form-intro">{% if codes %}전체 결과가 공개되면 장부 표기 그대로 코드로 입력합니다. 판독문 문장은 입력하지 않습니다.{% else %}판정을 짧게 입력합니다(예: +, -, 양성, 음성).{% endif %}</p>
+          <form action="/ledger/cases/{{ selected.id }}/receive" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="report_ref">접수번호 {% if codes %}<span class="required">필수</span>{% else %}<span class="optional">선택</span>{% endif %}</label><input id="report_ref" name="report_ref" maxlength="20" {% if codes %}required{% endif %} placeholder="예: T9700001" autocomplete="off">
+            <label for="result_notation">{% if codes %}조직검사결과 코드{% else %}검사결과{% endif %} <span class="required">필수</span></label><input id="result_notation" name="result_notation" maxlength="120" required placeholder="{% if codes %}예: TA#2(L), H#1{% else %}예: +{% endif %}" autocomplete="off">
+            {% if codes %}<p class="field-help">코드#개수(보조표기)를 쉼표로 잇습니다. 미등록 코드는 저장하되 약어 사전 검토로 표시됩니다.</p>{% endif %}
+            {% if selected.procedure_type == 'stomach' and codes %}<label for="sydney_notation">Sydney 등급 <span class="optional">선택</span></label><input id="sydney_notation" name="sydney_notation" maxlength="40" placeholder="예: HP-/Neu++/Mon++/Atr+/IM-" autocomplete="off">{% endif %}
+            <label for="site_summary">검사위치 {% if codes %}<span class="required">필수</span>{% else %}<span class="optional">선택</span>{% endif %}</label><input id="site_summary" name="site_summary" maxlength="80" {% if codes %}required{% endif %} value="{{ selected.site }}" autocomplete="off">
             <button class="button primary full" type="submit">결과 입력 완료 <span aria-hidden="true">→</span></button>
           </form>
           {% else %}
-          <dl class="result-preview"><div><dt>입력한 결과</dt><dd>{{ selected.result_summary }}</dd></div><div><dt>검사위치</dt><dd>{{ selected.site_summary }}</dd></div></dl>
-          {% if selected.stage == 'DOCTOR_PENDING' %}
+          <dl class="result-preview">
+            {% if selected.report_ref %}<div><dt>접수번호</dt><dd>{{ selected.report_ref }}</dd></div>{% endif %}
+            <div><dt>결과</dt><dd>{% for finding in selected.findings %}<span class="finding-chip {% if not finding.registered %}unregistered{% endif %}">{{ finding.display() }}</span>{% else %}{{ selected.result_code or '—' }}{% endfor %}</dd></div>
+            {% if sydney_text %}<div><dt>Sydney</dt><dd>{{ sydney_text }}</dd></div>{% endif %}
+            {% if selected.site %}<div><dt>검사위치</dt><dd>{{ selected.site }}</dd></div>{% endif %}
+            {% if selected.reported_on %}<div><dt>결과보고일</dt><dd>{{ selected.reported_on.strftime('%Y.%m.%d') }}</dd></div>{% endif %}
+          </dl>
+          {% if sel_stage == 'DOCTOR_PENDING' %}
           <p class="form-intro">원장이 정한 재검 시점을 그대로 기록합니다.</p>
-          <form action="/demo/cases/{{ selected.id }}/decide" method="post">
+          <form action="/ledger/cases/{{ selected.id }}/decide" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label for="mode">원장 지시</label><select id="mode" name="mode"><option value="required">재검 날짜 지정</option><option value="not_required">재검 불필요</option></select>
+            <fieldset class="segmented"><legend>원장 지시</legend><label><input type="radio" name="mode" value="required" checked> 재검 날짜 지정</label><label><input type="radio" name="mode" value="not_required"> 재검 불필요</label></fieldset>
             <label for="due_date">지정한 재검 날짜</label><input type="date" id="due_date" name="due_date"><p class="field-help">권장 날짜는 자동으로 채우지 않습니다.</p>
             <label for="reason">재검 불필요 사유</label><input id="reason" name="reason" maxlength="120" placeholder="불필요를 선택한 경우 입력" autocomplete="off">
             <button class="button primary full" type="submit">원장 지시 기록 <span aria-hidden="true">→</span></button>
           </form>
           {% else %}
           <div class="decision-box"><span>기록된 원장 지시</span>{% if selected.followup_due %}<strong>{{ selected.followup_due.strftime('%Y.%m.%d') }} 재검</strong>{% else %}<strong>재검 불필요</strong><p>{{ selected.no_followup_reason }}</p>{% endif %}</div>
-          {% if selected.stage == 'NOTIFY_PENDING' %}
-          <p class="form-intro">원장 지시에 따라 안내한 뒤 결과를 기록합니다. 부재이면 안내 대기에 남습니다.</p>
-          <div class="attempts">지금까지 연락 시도 <strong>{{ selected.contact_attempts }}회</strong></div>
-          <form action="/demo/cases/{{ selected.id }}/notify" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button primary full" name="outcome" value="reached" type="submit">✓ 안내 완료</button><button class="button secondary full" name="outcome" value="no_answer" type="submit">부재 기록</button></form>
-          {% else %}<div class="complete-note"><strong>✓ 안내를 기록했습니다.</strong><p>다른 행을 선택해 남은 업무를 확인하세요.</p></div>{% endif %}
+          {% if sel_stage == 'FOLLOWUP' %}
+          <p class="form-intro">재검을 시행했으면 날짜를 기록해 재검 대상에서 내립니다.</p>
+          <form action="/ledger/cases/{{ selected.id }}/followup-done" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="done_on">재검 시행일</label><input type="date" id="done_on" name="done_on" required max="{{ today.isoformat() }}">
+            <button class="button primary full" type="submit">재검 완료 기록</button>
+          </form>
+          {% else %}<div class="complete-note"><strong>✓ 종결된 기록입니다.</strong>{% if selected.followup_done_on %}<p>재검 시행 {{ selected.followup_done_on.strftime('%Y.%m.%d') }}</p>{% endif %}</div>{% endif %}
           {% endif %}{% endif %}
         </div>
-      {% else %}<div class="detail-body empty-state"><h2 id="detail-title">남은 업무가 없습니다</h2><a href="/dashboard">전체 업무 보기</a></div>{% endif %}
+      {% else %}<div class="detail-body empty-state"><h2 id="detail-title">남은 업무가 없습니다</h2><a href="{{ link(new=True) }}">＋ 새 검사 접수</a></div>{% endif %}
       </section>
     </div>
-    <footer class="page-footer"><span>CoriOps Nexus <span class="footer-dot">·</span> 첫 수동 대시보드</span><span>씨젠 수동 확인 → 결과 입력 → 남은 업무 확인</span></footer>
-  </div>
-</main>
-</body>
-</html>
+{% endblock %}
