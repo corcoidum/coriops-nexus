@@ -46,7 +46,9 @@ jobs:
       - name: 의존성 설치
         run: python -m pip install '.[test]'
       - name: 정적 검사 (pyflakes)
-        run: python -m pyflakes app tests migrations
+        run: python -m pyflakes app tests migrations scripts
+      - name: 생성 문서 검사 (ontology YAML → docs)
+        run: python scripts/gen_docs.py --check
       - name: Compose 구성 검사 (시연은 .env 없이, 장부는 필수값과 함께)
         run: |
           docker compose -f docker-compose.prototype.yml config --quiet
