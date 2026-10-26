@@ -12,11 +12,11 @@ result_flags: [H, L]
 # 결과 항목이 있고 모두 정상범위이면 결과란에 적는 표기(B08). 결과 항목이 없으면 빈칸(미수신).
 normal_label: 정상
 # 결과란 항목명은 원내 약칭으로 적는다(B10). 목록에 없는 이름은 그대로 적고 검토 항목을 만든다.
-# 씨젠 결과는 환자별 PDF(보험코드·검사항목·검사결과·판정·참고치)다. 보험코드 → 약칭 대응 제안은 docs/blood-ledger-plan.md(B12·B14).
-# AFP는 [제안] 약칭(B12)이며 확정 전이다.
+# 씨젠 결과는 환자별 PDF(보험코드·검사항목·검사결과·판정·참고치)다. 보험코드 → 약칭 대응은 docs/blood-ledger-plan.md(L25·B14).
+# AFP 약칭은 B12에서 확정했다(L25).
 item_names: [Hb, Glu, CHOL, TG, HDL, LDL, AST, ALT, GGT, Cr, AFP]
 # 정성 검사(B16): 결과지 판정 칸이 비어 있으므로 항목마다 Neg/Pos를 골라 적는다. 분류에 따라 입력 칸이 생긴다.
-# 약칭은 [제안](B12).
+# 약칭 HBsAg·Anti-HBs·Anti-HCV는 B12에서 확정했다(L25).
 qualitative_items:
   추가b형간염: [HBsAg, Anti-HBs]
   추가c형간염: [Anti-HCV]
