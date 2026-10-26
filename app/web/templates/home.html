@@ -8,14 +8,24 @@
     {% else %}
     <div class="today-grid">
       <section class="panel today-card tissue" aria-labelledby="today-tissue">
-        <div class="today-head"><span class="ledger-chip tissue">조직검체</span><h2 id="today-tissue">내시경 조직·CLO·Stool</h2></div>
+        <div class="today-head"><span class="ledger-chip tissue">조직검체</span><h2 id="today-tissue">내시경 조직·CLO</h2></div>
         <p class="today-flow">접수 → 인계 → 결과 → 원장 지시 → 재검</p>
-        <a class="today-row {{ tissue.pickup.level }}" href="/dashboard?stage=HANDOFF_PENDING"><span>오늘 인계 대기 · {{ tissue.pickup.text }}</span><strong>{{ tissue.counts.HANDOFF_PENDING }}</strong></a>
+        <a class="today-row {{ tissue.pickup.level }}" href="/dashboard?stage=HANDOFF_PENDING"><span>오늘 인계 대기(분변잠혈 포함) · {{ tissue.pickup.text }}</span><strong>{{ tissue.pickup.pending_cases }}</strong></a>
         <a class="today-row {% if tissue.flags.result_delayed %}danger{% endif %}" href="/dashboard?stage=RESULT_PENDING"><span>결과 대기{% if tissue.flags.result_delayed %} · 지연 {{ tissue.flags.result_delayed }}{% endif %}</span><strong>{{ tissue.counts.RESULT_PENDING }}</strong></a>
         <a class="today-row" href="/dashboard?stage=DOCTOR_PENDING"><span>원장 지시 대기</span><strong>{{ tissue.counts.DOCTOR_PENDING }}</strong></a>
         <a class="today-row {% if tissue.flags.followup_due %}danger{% endif %}" href="/dashboard?stage=FOLLOWUP&amp;due=due"><span>재검 도래</span><strong>{{ tissue.flags.followup_due }}</strong></a>
         <a class="today-go" href="/dashboard">조직검체 장부 열기 →</a>
       </section>
+      {% if fobt %}
+      <section class="panel today-card tissue" aria-labelledby="today-fobt">
+        <div class="today-head"><span class="ledger-chip tissue">분변잠혈</span><h2 id="today-fobt">분변잠혈 대장</h2></div>
+        <p class="today-flow">접수 → 인계 → 결과 → 원장 확인 · 재검 예정일 없음</p>
+        <a class="today-row {% if fobt.flags.result_delayed %}danger{% endif %}" href="/fobt?stage=RESULT_PENDING"><span>결과 대기{% if fobt.flags.result_delayed %} · 지연 {{ fobt.flags.result_delayed }}{% endif %}</span><strong>{{ fobt.counts.RESULT_PENDING }}</strong></a>
+        <a class="today-row" href="/fobt?stage=DOCTOR_PENDING"><span>원장 확인 대기</span><strong>{{ fobt.counts.DOCTOR_PENDING }}</strong></a>
+        <a class="today-row {% if fobt.flags.positive_subjects %}warn{% endif %}" href="/fobt?stage=ALL&amp;kind=ALL&amp;positive=1"><span>{{ fobt.positive_label }}자</span><strong>{{ fobt.flags.positive_subjects }}</strong></a>
+        <a class="today-go" href="/fobt">분변잠혈 대장 열기 →</a>
+      </section>
+      {% endif %}
       {% if blood %}
       <section class="panel today-card blood" aria-labelledby="today-blood">
         <div class="today-head"><span class="ledger-chip blood">혈액검체</span><h2 id="today-blood">검진 혈액 (씨젠)</h2></div>

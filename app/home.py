@@ -14,10 +14,12 @@ router = APIRouter()
 @router.get("/")
 def today(request: Request):
     actor = current_actor(request)
-    context: dict = {"tissue": None, "blood": None}
+    context: dict = {"tissue": None, "fobt": None, "blood": None}
     if actor.can("ledger.view"):
-        snap = request.app.state.dashboard_service.snapshot()
-        context.update(tissue=snap, today=snap["today"])
+        service = request.app.state.dashboard_service
+        snap = service.snapshot()
+        # 분변잠혈은 조직검체 장부와 따로 쓰는 대장이다(A22). 인계는 같은 수령이라 함께 센다.
+        context.update(tissue=snap, fobt=service.snapshot(ledger="fobt"), today=snap["today"])
         lab = request.app.state.lab_service
         if lab is not None:
             context["blood"] = lab.snapshot()

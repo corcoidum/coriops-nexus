@@ -96,7 +96,7 @@ docker compose -f docker-compose.prototype.yml --profile lab-demo run --build --
 - 목록은 이름을 가리고 선택한 건만 이름을 보여준다. 조회·변경은 조직검체 장부와 같은 권한(`ledger.view`, `ledger.result`)·접속기록 호출을 거친다.
 - 시험: `tests/prototype/test_lab_dashboard.py` 16개 + DB 모드 미조립 1개.
 
-## 두 장부 구분 화면 — A17
+## 두 장부 구분 화면 — A26
 
 | 위치 | 바뀐 점 |
 |---|---|

@@ -3,6 +3,8 @@ status: SYNTHETIC_ONLY
 # 수동 대시보드 시연값. 정식 config/rules.yaml의 R02·R07을 대체하지 않는다.
 # [가정] 기존 장부에서 위탁 다음 진료일 결과가 대부분이었다는 사용자 대장 관찰(A12). 운영 전 실측으로 조정한다.
 result_delay_business_days: 2
+# RUT(CLO)는 원내 판정이라 다음 진료일까지 결과가 있어야 한다(A17). config/rules.yaml PATH.L02와 같은 값(시험이 확인).
+rut_result_delay_business_days: 1
 # 재검 기한이 이 일수 이내면 '30일 이내'로 강조한다. 정식 R07 calendar_days와 같은 값.
 followup_window_days: 30
 # 합성 기본값. 실제 직원·씨젠 기사 이름을 저장소에 넣지 않는다.

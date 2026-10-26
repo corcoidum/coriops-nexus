@@ -1,6 +1,6 @@
 # ERD
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `c35b8a3d18f2da87859f3ab5770c10c19a83fd7f0dc120a01d5a14801ea67f71`
+> 원천: `ontology/coriops.yaml` · SHA-256 `0405fd8fd042483a7c9f365a60ba6ed3f3a1b2553765455564d760236bdd7ed6`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 공통 필드(id·created_at·updated_at)는 모든 테이블에 있다. 관계는 각 클래스의 `references` 필드에서 만든다. JSONB 안에 들어가는 구성 요소(ReportFinding·SydneyGrading)와 config 등록값(ResultCode)은 그림에서 뺐다.
@@ -186,12 +186,14 @@ erDiagram
         uuid id PK
         timestamptz created_at
         timestamptz updated_at
-        uuid rule_id FK
         timestamptz evaluated_at
         timestamptz finished_at
+        enum scope
         enum status
         string config_hash
         integer candidate_count
+        integer created_count
+        integer resolved_count
         string error_code
     }
     Task {
@@ -199,17 +201,19 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
         uuid rule_id FK
+        uuid run_id FK
         string subject_type
         uuid subject_id
         string dedupe_key
         string title
+        enum priority
         enum assignee_role
         timestamptz opened_at
         timestamptz due_at
         enum status
         timestamptz resolved_at
         string resolved_by
-        timestamptz condition_cleared_at
+        string resolution_note
     }
     StaffRole }o--|| Staff : roleOf
     PermissionHistory }o--|| Staff : changesPermissionOf
@@ -224,8 +228,8 @@ erDiagram
     ExamResult |o--|| Exam : resultOf
     DoctorReview |o--|| Exam : reviews
     FollowUp |o--|| DoctorReview : plannedBy
-    RuleRun }o--|| Rule : evaluates
     Task }o--|| Rule : createdBy
+    Task }o--|| RuleRun : openedIn
 ```
 
 ## 단계별 테이블
@@ -247,6 +251,6 @@ erDiagram
 | Handoff | `ledger_handoffs` | 구현됨 |
 | ImportBatch | `ledger_import_batches` | 구현됨 |
 | LedgerExport | `ledger_exports` | 구현됨 |
-| Rule | `rules` | 예정(Stage B) |
-| RuleRun | `rule_runs` | 예정(Stage B) |
-| Task | `tasks` | 예정(Stage B) |
+| Rule | `rules` | 구현됨 |
+| RuleRun | `rule_runs` | 구현됨 |
+| Task | `tasks` | 구현됨 |

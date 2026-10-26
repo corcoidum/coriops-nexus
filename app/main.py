@@ -24,6 +24,7 @@ from app.kernel.auth import AuthService
 from app.kernel.network import NetworkPolicy
 from app.kernel.routes_auth import router as auth_router
 from app.kernel.web import SESSION_COOKIE, UserError, demo_actor, same_origin
+from app.kernel.tasks import PostgresTaskStore
 from app.modules.endoscopy_pathology.ledger_db import PostgresStore
 from app.modules.endoscopy_pathology.manual_dashboard import ManualDashboardService
 from app.modules.endoscopy_pathology.routes_manual_dashboard import router
@@ -37,7 +38,8 @@ PASSWORD_PATHS = ("/account/password", "/logout")
 
 def default_service() -> ManualDashboardService:
     if os.environ.get("CORIOPS_DATABASE_URL"):
-        return ManualDashboardService(store=PostgresStore())
+        store = PostgresStore()
+        return ManualDashboardService(store=store, task_store=PostgresTaskStore(store._engine))
     return ManualDashboardService()
 
 
