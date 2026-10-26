@@ -56,3 +56,51 @@ jobs:
             docker compose -f docker-compose.ledger.yml config --quiet
       - name: 시험 (pytest)
         run: python -m pytest -q
+
+  # 장부 컨테이너를 실제로 띄워 밖에서 두드려 본다. `config --quiet`로는 잡히지 않던 두 회귀를 막는다:
+  # ① 발신 차단이 psycopg 이름 조회를 막아 로그인 불가 ② 읽기 전용 컨테이너에 /tmp가 없어 엑셀 출력 500.
+  ledger-container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      COMPOSE_FILE: docker-compose.ledger.yml
+      COMPOSE_PROJECT_NAME: coriops-ci-ledger
+    steps:
+      - uses: actions/checkout@v4
+      - name: 일회용 합성 비밀값·출력 폴더 만들기 (커밋하지 않는 .env 대신 작업 환경변수)
+        run: |
+          # 매 실행마다 새로 만드는 값이며 운영 비밀번호가 아니다. 로그에 나오지 않게 가린다.
+          db_password="$(openssl rand -hex 16)"
+          temp_password="ci-temp-$(openssl rand -hex 8)"
+          new_password="ci-new-$(openssl rand -hex 8)"
+          echo "::add-mask::$db_password"
+          echo "::add-mask::$temp_password"
+          echo "::add-mask::$new_password"
+          export_dir="$RUNNER_TEMP/coriops-exports"
+          mkdir -p "$export_dir"
+          # 컨테이너는 cap_drop ALL인 root라 러너 사용자 폴더에 쓰려면 쓰기 권한이 열려 있어야 한다.
+          chmod 0777 "$export_dir"
+          {
+            echo "CORIOPS_DB_PASSWORD=$db_password"
+            echo "CORIOPS_EXPORT_HOST_DIR=$export_dir"
+            echo "CORIOPS_SMOKE_PASSWORD=$temp_password"
+            echo "CORIOPS_SMOKE_NEW_PASSWORD=$new_password"
+          } >> "$GITHUB_ENV"
+      - name: 장부 컨테이너 빌드·실행
+        run: |
+          docker compose up -d --build --wait --wait-timeout 120
+          # 서버는 마이그레이션을 마친 뒤에 열린다. app.manage의 마이그레이션과 겹치지 않게 먼저 기다린다.
+          timeout 90 sh -c 'until curl -fsS -o /dev/null http://127.0.0.1:8766/login; do sleep 1; done'
+      - name: 합성 계정 만들기 (app.manage, getpass는 TTY가 없으면 표준입력을 읽는다)
+        run: |
+          printf '%s\n%s\n' "$CORIOPS_SMOKE_PASSWORD" "$CORIOPS_SMOKE_PASSWORD" \
+            | docker compose run -T --rm ledger \
+                python -m app.manage create-staff --username ci-smoke --display-name 테스트 --roles DOCTOR,PRIVACY_OFFICER
+      - name: 연기 시험 (로그인 → 비밀번호 변경 → 접수 → 엑셀 출력 → 접속기록)
+        run: python3 scripts/ledger_smoke.py --username ci-smoke
+      - name: 실패 시 컨테이너 로그
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+      - name: 정리 (CI 전용 일회용 볼륨 삭제)
+        if: always()
+        run: docker compose down -v --remove-orphans

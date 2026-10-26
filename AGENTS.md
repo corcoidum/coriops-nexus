@@ -43,7 +43,7 @@ python scripts/gen_docs.py --check   # YAML을 고쳤으면 먼저 python script
 PGHOST=127.0.0.1 PGPORT=5432 PGUSER=coriops_test PGDATABASE=coriops_test python -m pytest -q
 ```
 
-GitHub Actions(`.github/workflows/ci.yml`)가 PR마다 같은 검사를 실행한다. 빨간 CI는 병합하지 않는다. 시험을 건너뛰거나 지워서 통과시키지 않는다.
+GitHub Actions(`.github/workflows/ci.yml`)가 PR마다 같은 검사를 실행하고, `ledger-container` 작업이 `docker-compose.ledger.yml`을 실제로 띄워 `scripts/ledger_smoke.py`로 로그인·엑셀 출력·접속기록을 확인한다. 빨간 CI는 병합하지 않는다. 시험을 건너뛰거나 지워서 통과시키지 않는다.
 
 ## 4. 작업 방식
 

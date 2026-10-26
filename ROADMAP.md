@@ -142,7 +142,7 @@
 | Unit | Rule, 파서(결과 표기·엑셀), 상태 전이, 진료일 계산 | ✅ 결과 표기·진료일·상태 / 🔴 Rule·Task(Stage B) |
 | Integration | PostgreSQL, Alembic up/down/up, 화면·권한·CSRF, 엑셀 가져오기 | ✅ |
 | Scenario | 가상 환자: 접수 → 인계 → 결과 → 원장 지시 → 재검 도래 | ✅ 브라우저 확인 / 🟡 자동 시나리오 시험은 Stage B에서 고정 시계 E2E로 |
-| CI | PR마다 pyflakes + Compose 구성 + pytest(PostgreSQL 16) | ✅ |
+| CI | PR마다 pyflakes + Compose 구성 + pytest(PostgreSQL 16) + 장부 컨테이너 연기 시험(`scripts/ledger_smoke.py`) | ✅ |
 
 ## 8. 오래 남을 질문 — 지금 답할 수 있는가
 
