@@ -15,9 +15,9 @@ conventions:
   enum_storage: PostgreSQL TEXT(+ CHECK)
   status: implemented는 실제 테이블과 시험으로 일치를 검사, planned는 해당 단계에서 구현
   generated_docs: docs/ontology.md·erd.md·state-machine.md·fhir-mapping.md는 scripts/gen_docs.py가 만든다
-# 실제 테이블이 있지만 아직 클래스로 나누지 않은 전환기 테이블. Stage A-2에서 정식 테이블로 옮긴다.
+# 코드에는 없지만 DB에 남아 있는 전환기 테이블. 읽거나 쓰지 않는다.
 transitional_tables:
-  ledger_entries: Stage A-2에서 Patient·Exam·Specimen·ExamResult·DoctorReview·FollowUp으로 이전
+  ledger_entries_legacy: Stage A-2 이전 시점 사본(0003). 새 기록이 반영되지 않으며 다음 리비전에서 삭제
 enums:
   StaffRoleCode: [DOCTOR, ADMIN, NURSE, PRIVACY_OFFICER]
   Sex: [M, F]
@@ -133,8 +133,7 @@ classes:
       note: {type: string}
   # ---------- kernel: 환자 (Stage A-2)
   Patient:
-    status: planned
-    planned_stage: A-2
+    status: implemented
     table: patients
     layer: kernel
     fhir: Patient
@@ -142,12 +141,11 @@ classes:
     fields:
       chart_no: {type: string, unique: true}
       name: {type: string}
-      sex: {type: enum, enum: Sex, nullable: true}
-    constraints: [같은 차트번호에 다른 이름이 들어오면 덮어쓰지 않고 거부, 주민번호·연락처·주소는 저장하지 않음]
+    constraints: [같은 차트번호에 다른 이름이 들어오면 덮어쓰지 않고 거부, 주민번호·연락처·주소는 저장하지 않음,
+                  성별·나이는 장부 행마다 적힌 값이라 Exam에 둔다]
   # ---------- endoscopy_pathology: 조직검체·CLO·Stool 장부
   Exam:
-    status: planned
-    planned_stage: A-2
+    status: implemented
     table: exams
     layer: endoscopy_pathology
     fhir: ServiceRequest / Procedure
@@ -158,15 +156,15 @@ classes:
       exam_date: {type: date}
       procedure_type: {type: enum, enum: ProcedureType, nullable: true}
       age: {type: integer, nullable: true}
+      sex: {type: enum, enum: Sex, nullable: true}
       report_ref: {type: string, nullable: true}
       source: {type: enum, enum: EntrySource}
       import_batch_id: {type: uuid, references: ImportBatch, relation: importedIn, nullable: true}
       version: {type: integer}
     unique: [[kind, report_ref]]
-    constraints: [age는 검사 당시 나이, report_ref는 수탁기관 접수번호, version은 화면 동시 수정 확인용]
+    constraints: [age는 검사 당시 나이, sex는 장부 행에 적힌 값 그대로(다른 행으로 채우지 않음), report_ref는 수탁기관 접수번호, version은 화면 동시 수정 확인용]
   Specimen:
-    status: planned
-    planned_stage: A-2
+    status: implemented
     table: specimens
     layer: endoscopy_pathology
     fhir: Specimen
@@ -182,8 +180,7 @@ classes:
       entrusted_on: {type: date, nullable: true}
     constraints: [specimen_count는 1~99병, 인계 시 장부 병 수와 확인 병 수가 같아야 기록]
   ExamResult:
-    status: planned
-    planned_stage: A-2
+    status: implemented
     table: exam_results
     layer: endoscopy_pathology
     fhir: DiagnosticReport
@@ -198,8 +195,7 @@ classes:
     constraints: [판독문 원문·자유서술 저장 금지, 조직검사는 findings·CLO·Stool은 20자 이내 판정 result_code,
                   review_codes는 사람이 확인할 표기 문제(미등록 코드 등)]
   DoctorReview:
-    status: planned
-    planned_stage: A-2
+    status: implemented
     table: doctor_reviews
     layer: endoscopy_pathology
     fhir: null
@@ -212,8 +208,7 @@ classes:
     constraints: [재검 필요 여부와 날짜는 원장이 정하며 시스템이 추천·계산하지 않음,
                   decided_by가 null이면 Stage A 이전 자료(기록자 미보존)]
   FollowUp:
-    status: planned
-    planned_stage: A-2
+    status: implemented
     table: followups
     layer: endoscopy_pathology
     fhir: ServiceRequest

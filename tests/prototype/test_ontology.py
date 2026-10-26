@@ -8,22 +8,34 @@ import importlib.util
 from pathlib import Path
 import re
 
+from alembic import command
+from alembic.config import Config
 import pytest
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Integer, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger, Boolean, CheckConstraint, Date, DateTime, Integer, Text, UniqueConstraint, create_engine, inspect,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
 import yaml
 
-from app.kernel import security_db
+from app.kernel import patients, security_db
 from app.kernel.access_log import ACTION_LABELS
 from app.modules.endoscopy_pathology import ledger_db
+from app.modules.endoscopy_pathology.ledger_db import database_url
 from app.modules.endoscopy_pathology.ledger_model import STAGE_LABELS
 
 
 ROOT = Path(__file__).resolve().parents[2]
 ONTOLOGY = yaml.safe_load((ROOT / "ontology" / "coriops.yaml").read_text(encoding="utf-8"))
 CLASSES = ONTOLOGY["classes"]
-TABLES = {table.name: table for meta in (security_db.metadata, ledger_db.metadata) for table in meta.tables.values()}
+TABLES = {table.name: table for meta in (security_db.metadata, patients.metadata, ledger_db.metadata)
+          for table in meta.tables.values()}
 IMPLEMENTED = {name: c for name, c in CLASSES.items() if c["status"] == "implemented" and "table" in c}
+
+
+def alembic_config() -> Config:
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "migrations"))
+    return config
 
 
 def _load_generator():
@@ -101,9 +113,20 @@ def test_implemented_class_matches_its_table(name):
 
 
 def test_every_code_table_is_described():
-    """새 테이블을 만들면 YAML에 implemented 클래스로 적어야 한다(전환기 테이블 제외)."""
-    described = {c["table"] for c in IMPLEMENTED.values()} | set(ONTOLOGY.get("transitional_tables", {}))
-    assert set(TABLES) == described
+    """새 테이블을 만들면 YAML에 implemented 클래스로 적어야 한다."""
+    assert set(TABLES) == {c["table"] for c in IMPLEMENTED.values()}
+    assert not set(ONTOLOGY.get("transitional_tables", {})) & set(TABLES)
+
+
+def test_migrated_database_has_exactly_the_described_tables():
+    """Alembic head의 실제 DB 테이블 = 구현 클래스 + 전환기 테이블."""
+    command.upgrade(alembic_config(), "head")
+    engine = create_engine(database_url())
+    try:
+        actual = set(inspect(engine).get_table_names()) - {"alembic_version"}
+    finally:
+        engine.dispose()
+    assert actual == {c["table"] for c in IMPLEMENTED.values()} | set(ONTOLOGY.get("transitional_tables", {}))
 
 
 def test_planned_classes_have_no_table_yet():

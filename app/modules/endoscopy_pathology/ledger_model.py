@@ -64,9 +64,11 @@ class LedgerEntry:
     result_code: str = ""
     review_codes: tuple[str, ...] = ()
     decided_at: datetime | None = None
+    decided_by: str | None = None  # 원장 지시를 기록한 계정. None = Stage A 이전 자료
     followup_due: date | None = None
     no_followup_reason: str = ""
     followup_done_on: date | None = None
+    followup_done_by: str | None = None
     import_batch_id: UUID | None = None
 
     def needs_handoff(self, handoff_kinds: frozenset[str]) -> bool:

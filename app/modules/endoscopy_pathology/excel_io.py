@@ -16,7 +16,7 @@ import zipfile
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 import yaml
 
@@ -442,4 +442,75 @@ def build_followup_workbook(rows: list[tuple[LedgerEntry, str]], title: str, kin
                         entry.chart_no, entry.patient_name, entry.age, entry.sex, entry.result_notation,
                         entry.decided_at.astimezone(KST).date() if entry.decided_at else None])
     sheet.auto_filter.ref = f"A3:{get_column_letter(len(FOLLOWUP_HEADERS))}{max(sheet.max_row, 3)}"
+    return workbook
+
+
+# ---------- 종이 대장 양식 (A15). 열 이름·순서는 원내 종이 대장과 같다.
+PAPER_FORMS = {
+    "specimen": {
+        "title": "검체 관리 장부", "short": "① 검체 관리 장부", "file_prefix": "검체관리장부",
+        "headers": ("시행날짜", "차트번호", "성명", "검사명\n(위/대장내시경)", "조직검사 유무, 위치 및 개수",
+                    "RUT\n유무", "RUT\n결과"),
+        "keys": ("exam_date", "chart_no", "name", "procedure", "biopsy_text", "rut_done", "rut_result"),
+        "widths": (12, 12, 12, 16, 44, 8, 10),
+    },
+    "pathology": {
+        "title": "조직병리검체 접수, 인계, 인수 및 회신결과 대장 (위/대장)", "short": "② 조직병리검체 대장",
+        "file_prefix": "조직병리검체대장",
+        "headers": ("날짜", "접수번호", "차트번호", "성명", "성별/나이", "부위", "접수인(서명)", "위탁날짜",
+                    "인계인(서명)", "수령인(서명)", "회신날짜", "결과"),
+        "keys": ("exam_date", "report_ref", "chart_no", "name", "sex_age", "site", "registered_by", "entrusted_on",
+                 "handed_by", "received_by", "reported_on", "result"),
+        "widths": (11, 11, 10, 12, 9, 14, 11, 11, 11, 11, 11, 28),
+    },
+}
+
+
+def format_sex_age(sex: str | None, age: int | None) -> str:
+    """종이 대장 표기 M/65. 빈 쪽은 비워 둔다."""
+    if not sex and age is None:
+        return ""
+    return f"{sex or ''}/{age if age is not None else ''}"
+
+
+def build_paper_workbook(form: str, rows: list[dict], start: date, end: date, printed: datetime) -> Workbook:
+    """종이 대장과 같은 열 순서·제목으로 출력한다. A4 가로, 열 이름 줄은 쪽마다 반복."""
+    spec = PAPER_FORMS[form]
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = spec["file_prefix"]
+    columns = len(spec["headers"])
+    thin = Side(style="thin", color="000000")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=columns)
+    sheet["A1"] = spec["title"]
+    sheet["A1"].font = Font(bold=True, size=16, underline="single")
+    sheet["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    sheet.row_dimensions[1].height = 30
+    sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=columns)
+    sheet["A2"] = (f"기간 {start:%Y.%m.%d} ~ {end:%Y.%m.%d} · {len(rows)}줄 · 출력 {printed:%Y.%m.%d %H:%M}"
+                   " · CoriOps DB 사본(종이 대장 대조용)")
+    sheet["A2"].font = Font(size=9, color="555555")
+    sheet["A2"].alignment = Alignment(horizontal="right")
+    for index, (label, width) in enumerate(zip(spec["headers"], spec["widths"]), 1):
+        cell = sheet.cell(3, index, label)
+        cell.fill = PatternFill("solid", fgColor="EEEAE0")
+        cell.font = Font(bold=True, size=10)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = border
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    sheet.row_dimensions[3].height = 30
+    for row in rows:
+        _append(sheet, [row[key] if row[key] is not None else "" for key in spec["keys"]])
+        sheet.row_dimensions[sheet.max_row].height = 22
+        for cell in sheet[sheet.max_row]:
+            cell.border = border
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+    sheet.freeze_panes = "A4"
+    sheet.print_title_rows = "3:3"
+    sheet.page_setup.orientation = "landscape"
+    sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
+    sheet.page_setup.fitToWidth = 1
+    sheet.page_setup.fitToHeight = 0
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True
     return workbook
