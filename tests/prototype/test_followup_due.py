@@ -103,7 +103,7 @@ def test_followup_list_export_writes_only_the_filtered_people(service, tmp_path)
     assert record.file_name == "재검대상_20261105_100000.xlsx" and record.row_count == 3
     assert subjects == ["T-0010", "F-0004", "F-0001"]
     sheet = load_workbook(tmp_path / record.file_name)["재검 대상"]
-    assert sheet["A1"].value.startswith("재검 대상자 · 재검 도래 · 처음 ~ 2026-11-05 · 전체 장부 · 3명")
+    assert sheet["A1"].value.startswith("재검 대상자 · 재검 도래 · 처음 ~ 2026-11-05 · 조직검체 장부 · 3명")
     assert [c.value for c in sheet[3]][:7] == ["재검 예정일", "상태", "장부", "검사종류", "검사일", "차트번호", "수진자명"]
     rows = list(sheet.iter_rows(min_row=4, values_only=True))
     assert [(r[1], r[5]) for r in rows] == [("재검 기한 10일 경과", "T-0010"), ("재검 기한 3일 경과", "F-0004"),
@@ -114,7 +114,7 @@ def test_followup_list_export_writes_only_the_filtered_people(service, tmp_path)
 
 def test_followup_export_refuses_empty_lists_and_missing_folder(service, tmp_path):
     with pytest.raises(DashboardError) as empty:
-        service.export_followups(kind="STOOL", due="due")
+        service.export_followups(kind="STOOL", due="due", ledger="fobt")
     assert empty.value.status_code == 422
     no_folder = ManualDashboardService(clock=FixedClock(), export_dir="")
     with pytest.raises(DashboardError) as missing:

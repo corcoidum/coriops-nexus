@@ -18,6 +18,8 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.page import PageMargins
+from openpyxl.worksheet.pagebreak import Break
 import yaml
 
 from .ledger_model import KINDS, KST, LedgerEntry
@@ -60,20 +62,28 @@ class LedgerAppConfig:
     short_result_pattern: re.Pattern
     max_rows_per_sheet: int
     export: dict
+    ledgers: dict[str, dict]
 
     @classmethod
     def load(cls, path: Path | None = None) -> LedgerAppConfig:
         with open(path or DEFAULT_CONFIG, encoding="utf-8") as source:
             raw = yaml.safe_load(source)
-        if set(raw["kinds"]) != set(KINDS):
+        if set(raw["kinds"]) != set(KINDS) or any(meta["ledger"] not in raw["ledgers"] for meta in raw["kinds"].values()):
             raise ValueError("INVALID_LEDGER_APP_CONFIG")
         return cls(
             kinds=raw["kinds"], fields={k: tuple(v) for k, v in raw["fields"].items()},
             required_fields=tuple(raw["required_fields"]), ignored_headers=frozenset(raw["ignored_headers"]),
             procedure_types=raw["procedure_types"], sexes=raw["sexes"],
             short_result_pattern=re.compile(raw["short_result_pattern"]),
-            max_rows_per_sheet=int(raw["max_rows_per_sheet"]), export=raw["export"],
+            max_rows_per_sheet=int(raw["max_rows_per_sheet"]), export=raw["export"], ledgers=raw["ledgers"],
         )
+
+    def ledger_kinds(self, ledger: str) -> tuple[str, ...]:
+        """그 장부 화면에 보이는 검사 종류(KINDS 순서)."""
+        return tuple(kind for kind in KINDS if self.kinds[kind]["ledger"] == ledger)
+
+    def ledger_path(self, kind: str) -> str:
+        return self.ledgers[self.kinds[kind]["ledger"]]["path"]
 
     @property
     def handoff_kinds(self) -> frozenset[str]:
@@ -393,12 +403,13 @@ def _append(sheet, values) -> None:
             cell.number_format = "yyyy.mm.dd"
 
 
-def build_workbook(rows: list[tuple[LedgerEntry, str]], config: LedgerAppConfig, codebook: ResultCodeBook) -> Workbook:
+def build_workbook(rows: list[tuple[LedgerEntry, str]], config: LedgerAppConfig, codebook: ResultCodeBook,
+                   kinds: tuple[str, ...] = KINDS) -> Workbook:
     """DB 사본 엑셀. 종류별 시트, 기존 17열 + 재검 2열. 이 파일을 고쳐 DB로 되돌리지 않는다."""
     workbook = Workbook()
     workbook.remove(workbook.active)
     followup_headers = tuple(config.export["followup_headers"])
-    for kind in KINDS:
+    for kind in kinds:
         sheet = workbook.create_sheet(config.kinds[kind]["sheet_names"][0])
         headers = (LEDGER_HEADERS if kind == "BIOPSY" else SHORT_HEADERS) + followup_headers
         _header(sheet, headers)
@@ -463,6 +474,15 @@ PAPER_FORMS = {
                  "handed_by", "received_by", "reported_on", "result"),
         "widths": (11, 11, 10, 12, 9, 14, 11, 11, 11, 11, 11, 28),
     },
+    # 원내 분변잠혈 대장(A22): 한 쪽을 좌우 두 칸 묶음으로 나눠 쓴다. 왼쪽을 다 채운 뒤 오른쪽을 채운다.
+    "fobt": {
+        "title": "분변잠혈검사 결과기록대장", "short": "③ 분변잠혈 대장", "file_prefix": "분변잠혈대장",
+        "subtitle": "[검진] Stool occult blood 정량",
+        "headers": ("접수\n일자", "차트\n번호", "수진자", "성별", "나이", "결과\n보고일", "결과\n(참고치\n<100ng/mL)"),
+        "keys": ("exam_date", "chart_no", "name", "sex", "age", "reported_on", "result"),
+        "widths": (11, 9, 12, 5, 5, 11, 14),
+        "two_up": True, "rows_per_page": 20,
+    },
 }
 
 
@@ -479,7 +499,9 @@ def build_paper_workbook(form: str, rows: list[dict], start: date, end: date, pr
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = spec["file_prefix"]
-    columns = len(spec["headers"])
+    blocks = 2 if spec.get("two_up") else 1
+    width = len(spec["headers"])
+    columns = width * blocks
     thin = Side(style="thin", color="000000")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
     sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=columns)
@@ -488,29 +510,61 @@ def build_paper_workbook(form: str, rows: list[dict], start: date, end: date, pr
     sheet["A1"].alignment = Alignment(horizontal="center", vertical="center")
     sheet.row_dimensions[1].height = 30
     sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=columns)
-    sheet["A2"] = (f"기간 {start:%Y.%m.%d} ~ {end:%Y.%m.%d} · {len(rows)}줄 · 출력 {printed:%Y.%m.%d %H:%M}"
+    sheet["A2"] = ((f"{spec['subtitle']} · " if spec.get("subtitle") else "")
+                   + f"기간 {start:%Y.%m.%d} ~ {end:%Y.%m.%d} · {len(rows)}줄 · 출력 {printed:%Y.%m.%d %H:%M}"
                    " · CoriOps DB 사본(종이 대장 대조용)")
     sheet["A2"].font = Font(size=9, color="555555")
     sheet["A2"].alignment = Alignment(horizontal="right")
-    for index, (label, width) in enumerate(zip(spec["headers"], spec["widths"]), 1):
-        cell = sheet.cell(3, index, label)
-        cell.fill = PatternFill("solid", fgColor="EEEAE0")
-        cell.font = Font(bold=True, size=10)
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        cell.border = border
-        sheet.column_dimensions[get_column_letter(index)].width = width
-    sheet.row_dimensions[3].height = 30
-    for row in rows:
-        _append(sheet, [row[key] if row[key] is not None else "" for key in spec["keys"]])
-        sheet.row_dimensions[sheet.max_row].height = 22
-        for cell in sheet[sheet.max_row]:
+    for block in range(blocks):
+        for offset, (label, col_width) in enumerate(zip(spec["headers"], spec["widths"]), 1):
+            index = block * width + offset
+            cell = sheet.cell(3, index, label)
+            cell.fill = PatternFill("solid", fgColor="EEEAE0")
+            cell.font = Font(bold=True, size=10)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             cell.border = border
-            cell.alignment = Alignment(vertical="center", wrap_text=True)
+            sheet.column_dimensions[get_column_letter(index)].width = col_width
+    sheet.row_dimensions[3].height = 44 if blocks > 1 else 30
+    if blocks == 1:
+        for row in rows:
+            _append(sheet, [row[key] if row[key] is not None else "" for key in spec["keys"]])
+            sheet.row_dimensions[sheet.max_row].height = 22
+            for cell in sheet[sheet.max_row]:
+                cell.border = border
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
+    else:
+        # 쪽마다 왼쪽 칸을 rows_per_page줄 채운 뒤 오른쪽 칸을 채운다. 빈 줄도 테두리를 그려 손으로 적을 수 있게 한다.
+        per_page = spec["rows_per_page"]
+        pages = max(1, -(-len(rows) // (per_page * blocks)))
+        for page in range(pages):
+            for line in range(per_page):
+                sheet_row = 4 + page * per_page + line
+                # 머리글을 포함해 A4 가로 한 장에 20줄이 들어가는 높이다(LibreOffice PDF로 확인).
+                sheet.row_dimensions[sheet_row].height = 20
+                for block in range(blocks):
+                    position = page * per_page * blocks + block * per_page + line
+                    row = rows[position] if position < len(rows) else None
+                    for offset, key in enumerate(spec["keys"], 1):
+                        value = row[key] if row is not None and row[key] is not None else ""
+                        cell = sheet.cell(sheet_row, block * width + offset, value)
+                        if isinstance(value, str):
+                            cell.data_type, cell.number_format = "s", "@"
+                        elif isinstance(value, date):
+                            cell.number_format = "yyyy-mm-dd"
+                        cell.border = border
+                        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                # 두 칸 묶음 사이를 굵은 선으로 나눈다.
+                divider = sheet.cell(sheet_row, width)
+                divider.border = Border(left=thin, right=Side(style="medium", color="000000"), top=thin, bottom=thin)
+            if page < pages - 1:
+                sheet.row_breaks.append(Break(id=4 + (page + 1) * per_page - 1))
     sheet.freeze_panes = "A4"
     sheet.print_title_rows = "3:3"
     sheet.page_setup.orientation = "landscape"
     sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
     sheet.page_setup.fitToWidth = 1
+    if blocks > 1:
+        sheet.page_margins = PageMargins(left=0.4, right=0.4, top=0.5, bottom=0.5)
     sheet.page_setup.fitToHeight = 0
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
     return workbook

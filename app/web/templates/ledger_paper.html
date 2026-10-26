@@ -11,7 +11,7 @@
       <div class="paper-toolbar">
         <form class="due-range" action="/ledger/paper" method="get">
           <input type="hidden" name="form" value="{{ form }}">
-          <label for="date_from">{% if form == 'specimen' %}시행날짜{% else %}날짜{% endif %}</label>
+          <label for="date_from">{% if form == 'specimen' %}시행날짜{% elif form == 'fobt' %}접수일자{% else %}날짜{% endif %}</label>
           <input type="date" id="date_from" name="date_from" value="{{ start.isoformat() }}" required>
           <span>~</span>
           <input type="date" id="date_to" name="date_to" value="{{ end.isoformat() }}" required>
@@ -31,6 +31,8 @@
         {% for row in rows %}
           {% if form == 'specimen' %}
           <tr><td>{{ row.exam_date.strftime('%Y.%m.%d') }}</td><td>{{ row.chart_no }}</td><td>{{ row.display_name }}</td><td>{{ row.procedure }}</td><td>{{ row.biopsy_text }}</td><td>{{ row.rut_done }}</td><td>{{ row.rut_result }}</td></tr>
+          {% elif form == 'fobt' %}
+          <tr><td>{{ row.exam_date.strftime('%Y.%m.%d') }}</td><td>{{ row.chart_no }}</td><td>{{ row.display_name }}</td><td>{{ row.sex or '' }}</td><td>{{ row.age if row.age is not none else '' }}</td><td>{{ row.reported_on.strftime('%Y.%m.%d') if row.reported_on else '' }}</td><td>{{ row.result }}</td></tr>
           {% else %}
           <tr><td>{{ row.exam_date.strftime('%Y.%m.%d') }}</td><td>{{ row.report_ref }}</td><td>{{ row.chart_no }}</td><td>{{ row.display_name }}</td><td>{{ row.sex_age }}</td><td>{{ row.site }}</td><td>{{ row.registered_by }}</td><td>{{ row.entrusted_on.strftime('%Y.%m.%d') if row.entrusted_on else '' }}</td><td>{{ row.handed_by }}</td><td>{{ row.received_by }}</td><td>{{ row.reported_on.strftime('%Y.%m.%d') if row.reported_on else '' }}</td><td>{{ row.result }}</td></tr>
           {% endif %}
@@ -39,6 +41,6 @@
         {% endfor %}
         </tbody>
       </table></div>
-      <p class="field-help">{% if form == 'specimen' %}내시경 1회(조직검사 + RUT)를 한 줄로 묶었습니다. 조직검사·RUT가 모두 없는 내시경은 앱에 올리지 않으므로 종이 대장에만 있습니다.{% else %}조직검사 건만 보입니다(위·대장). 서명 칸에는 앱에 기록된 이름이 들어가며, 종이 대장의 서명을 대신하지 않습니다.{% endif %}</p>
+      <p class="field-help">{% if form == 'specimen' %}내시경 1회(조직검사 + RUT)를 한 줄로 묶었습니다. 조직검사·RUT가 모두 없는 내시경은 앱에 올리지 않으므로 종이 대장에만 있습니다.{% elif form == 'fobt' %}[검진] Stool occult blood 정량. 엑셀은 원내 대장처럼 한 쪽을 좌우 두 칸 묶음(쪽당 40줄)으로 저장합니다.{% else %}조직검사 건만 보입니다(위·대장). 서명 칸에는 앱에 기록된 이름이 들어가며, 종이 대장의 서명을 대신하지 않습니다.{% endif %}</p>
     </section>
 {% endblock %}
