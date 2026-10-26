@@ -21,7 +21,7 @@ type RecordKey = tuple[str, str]
 EXCEL_CELL_TEXT_LIMIT = 32767
 COLUMN_KINDS = {"date", "text", "manual", "sex_age", "exam_kinds", "lab_result"}
 COLUMN_COUNT = 13
-NOTE_MAX = 40  # 재검안내 메모 길이. 문장형 판독을 막으려고 짧게 둔다
+NOTE_MAX = 40  # 비고란 메모 길이. 문장형 판독을 막으려고 짧게 둔다
 HEADER_ROW = 2  # 1행은 대장 제목
 THIN = Side(style="thin", color="000000")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
@@ -54,7 +54,7 @@ class LabRecord:
     items: tuple[LabItem, ...] = ()
     # 직원이 결과를 입력했으나 H/L 항목이 하나도 없을 때(모두 정상) True. 항목이 있으면 자동으로 수신 상태다.
     result_received: bool = False
-    followup_note: str | None = None  # 재검안내(B22): 관리 메모만
+    followup_note: str | None = None  # 비고란(B22·B24): 추후 관리 메모만
 
     @property
     def received(self) -> bool:

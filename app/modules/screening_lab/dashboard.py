@@ -204,7 +204,7 @@ class LabDashboardService:
             name = self._name(checked_by, "확인한 직원")
             note = followup_note.strip()
             if len(note) > NOTE_MAX:
-                raise UserError(f"재검안내는 {NOTE_MAX}자 이내 메모로 적어 주세요.", 422)
+                raise UserError(f"비고란은 {NOTE_MAX}자 이내 메모로 적어 주세요.", 422)
             record = replace(case.record, followup_note=note or None)
             self._cases[case_id] = replace(case, record=record, checked_at=self._clock.now(), checked_by=name)
 

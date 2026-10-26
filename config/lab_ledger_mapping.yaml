@@ -36,4 +36,4 @@ columns:
   - {header: 회신날짜, field: report_date, kind: date, width: 12}
   - {header: 결과, field: items, kind: lab_result, width: 40}
   # 원내 서식 12열 뒤에 추가한 13번째 열(B22). 추후 관리가 필요한 경우 직원이 짧은 안내 메모만 적는다. 판독·진단 문장은 적지 않는다.
-  - {header: 재검안내, field: followup_note, kind: text, width: 20}
+  - {header: 비고란, field: followup_note, kind: text, width: 20}

@@ -271,7 +271,7 @@ def test_check_can_record_followup_note(client, app):
                 followup_note="11/20 재검 안내함").status_code == 303
     done = next(c for c in lab(app).snapshot()["cases"] if c.id == case.id)
     assert done.record.followup_note == "11/20 재검 안내함"
-    assert "재검안내: 11/20 재검 안내함" in client.get(f"/lab?selected_id={case.id}").text
+    assert "비고란: 11/20 재검 안내함" in client.get(f"/lab?selected_id={case.id}").text
     other = first_in(app, "CHECK_PENDING")
     assert post(client, app, f"/lab/cases/{other.id}/check", checked_by="테스트직원",
                 followup_note="가" * 41).status_code == 422

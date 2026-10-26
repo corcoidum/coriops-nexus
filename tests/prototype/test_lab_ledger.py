@@ -35,7 +35,7 @@ HEADERS = (
     "수령인(서명)",
     "회신날짜",
     "결과",
-    "재검안내",
+    "비고란",
 )
 TITLE = "혈액병리검체 접수, 인계, 인수 및 회신결과 대장 (일반<6종.9종>/간)"
 FIRST_ROW = 3  # 1행 제목, 2행 열 이름
@@ -289,6 +289,6 @@ def test_qualitative_needed_follows_exam_kinds(policy):
 
 def test_followup_note_is_the_13th_column(workbook, policy):
     merge_records(workbook, [synthetic_record(followup_note="11/20 재검 안내함")], policy)
-    assert row_values(workbook)["재검안내"] == "11/20 재검 안내함"
+    assert row_values(workbook)["비고란"] == "11/20 재검 안내함"
     with pytest.raises(ValueError, match="INVALID_FOLLOWUP_NOTE"):
         merge_records(workbook, [synthetic_record(report_ref="X-2", followup_note="가" * 41)], policy)
