@@ -23,7 +23,7 @@
 | P13 | vendoring, 외부 egress 0, DB host port 없음 | 제6조①③과 연계한 내부 통제. 제6조의2 적용 여부 별도 확인 | test_runtime_egress_blocked_db_allowed, test_no_external_assets, test_compose_db_not_published | 4/5 TECH + firewall OPS | 미구현 |
 | P14 | mapping ignore/allowlist, 업로드 원본 디스크 미저장 | 최소 처리 원칙. 파서 내부 읽기까지 금지하는지 Q16 결정 필요 | test_ignored_values_absent, test_upload_never_spools, test_import_preview_redaction | 5 TECH + 헤더 검토 OPS | 결정 필요 |
 
-## 법령 원문 대조 — 2026-10-25 (A17)
+## 법령 원문 대조 — 2026-10-25 (A18)
 
 법제처 현행 본문으로 확인했다: 개인정보 보호법(시행 2026-09-11), 의료법(시행 2026-10-02), 개인정보의 안전성 확보조치 기준(고시 제2026-9호, 시행 2026-07-01). 의료법은 2026-11-12 이후 시행예정 개정이 여러 건 있어 운영 전 다시 확인한다. **법률 자문이 아니다.**
 

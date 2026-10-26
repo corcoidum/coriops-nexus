@@ -1,7 +1,7 @@
 version: '0.1-prototype'
 status: SYNTHETIC_ONLY
 sheet_name: 혈액검체장부
-# 2026-10-26 원내 실제 서식(A18). 1행 제목, 2행 열 이름, 3행부터 수진자 1명(접수 1건)당 한 행.
+# 2026-10-26 원내 실제 서식(A19). 1행 제목, 2행 열 이름, 3행부터 수진자 1명(접수 1건)당 한 행.
 title: 혈액병리검체 접수, 인계, 인수 및 회신결과 대장 (일반<6종.9종>/간)
 freeze_panes: E3
 key_fields: [report_ref, chart_no]

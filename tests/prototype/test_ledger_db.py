@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
+from app.kernel.patients import metadata as patient_metadata
 from app.modules.endoscopy_pathology.ledger_db import (
     ConcurrentUpdate, PostgresStore, database_url, metadata, replace_entry,
 )
@@ -21,7 +22,8 @@ from app.modules.endoscopy_pathology.result_notation import ResultCodeBook
 from ledger_helpers import FixedClock, standard_workbook
 
 ROOT = Path(__file__).resolve().parents[2]
-TABLES = ("ledger_entries", "ledger_exports", "ledger_import_batches", "ledger_handoffs")
+TABLES = ("followups", "doctor_reviews", "exam_results", "specimens", "exams", "patients", "ledger_exports",
+          "ledger_import_batches", "ledger_handoffs")
 
 
 def alembic_config() -> Config:
@@ -59,7 +61,7 @@ def test_migration_runs_up_down_up_and_matches_the_code_schema(engine):
     assert not set(TABLES) & set(inspect(engine).get_table_names())
     command.upgrade(alembic_config(), "head")
     inspector = inspect(engine)
-    for table in metadata.sorted_tables:
+    for table in [*patient_metadata.sorted_tables, *metadata.sorted_tables]:
         columns = {c["name"]: c for c in inspector.get_columns(table.name)}
         assert set(columns) == set(table.columns.keys()), table.name
         assert all(columns[c.name]["nullable"] == c.nullable for c in table.columns), table.name
@@ -100,10 +102,15 @@ def test_duplicate_report_reference_is_rejected(store):
 
 
 @pytest.mark.parametrize("sql", [
-    "UPDATE ledger_entries SET kind = 'LAB'",
-    "UPDATE ledger_entries SET procedure_type = 'knee'",
-    "UPDATE ledger_entries SET specimen_count = 0",
-    "UPDATE ledger_entries SET followup_due = '2030-01-01', no_followup_reason = '둘 다'",
+    "UPDATE exams SET kind = 'LAB'",
+    "UPDATE exams SET procedure_type = 'knee'",
+    "UPDATE exams SET sex = 'X'",
+    "UPDATE specimens SET specimen_count = 0",
+    "INSERT INTO patients (id, chart_no, name, created_at, updated_at) "
+    "SELECT gen_random_uuid(), chart_no, '다른이름', now(), now() FROM patients",
+    # 원장 지시 없는 재검 계획은 FK가 막는다.
+    "INSERT INTO followups (id, review_id, due_on, created_at, updated_at) "
+    "VALUES (gen_random_uuid(), gen_random_uuid(), '2030-01-01', now(), now())",
 ])
 def test_database_checks_reject_invalid_values(store, engine, sql):
     store.write(inserted=[entry()])
@@ -139,3 +146,14 @@ def test_import_into_postgres_and_reset_is_refused(store):
         service.reset()
     assert error.value.status_code == 403
     assert len(store.entries()) == 7
+
+
+def test_paper_ledger_intake_saves_two_exams_for_one_patient(store, engine):
+    """종이 검체 관리 장부 한 줄(조직검사 + RUT)은 같은 환자 1명에 검사 2건으로 한 번에 저장된다(A15)."""
+    service = ManualDashboardService(clock=FixedClock(), store=store)
+    ids = service.register_endoscopy("T-9200", "테스트종이", date(2026, 11, 5), "F/56", "stomach", True, "antrum",
+                                     "2", True)
+    saved = {e.id: e for e in PostgresStore(engine).entries()}
+    assert [(saved[i].kind, saved[i].sex, saved[i].age) for i in ids] == [("BIOPSY", "F", 56), ("CLO", "F", 56)]
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM patients")).scalar_one() == 1

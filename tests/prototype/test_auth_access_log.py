@@ -24,7 +24,8 @@ from ledger_helpers import FixedClock
 ROOT = Path(__file__).resolve().parents[2]
 PASSWORD = "합성-비밀번호-0001"
 ALL_TABLES = ("access_log_reviews", "access_logs", "auth_sessions", "permission_history", "staff_roles", "staff",
-              "ledger_entries", "ledger_exports", "ledger_import_batches", "ledger_handoffs")
+              "followups", "doctor_reviews", "exam_results", "specimens", "exams", "patients", "ledger_exports",
+              "ledger_import_batches", "ledger_handoffs")
 
 
 def alembic_config() -> Config:

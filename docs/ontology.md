@@ -1,6 +1,6 @@
 # Ontology 데이터 사전
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `f9ad6cd3e45b76acf54899bf86d16f2988145caab91a03917e52fec335b31f19`
+> 원천: `ontology/coriops.yaml` · SHA-256 `c35b8a3d18f2da87859f3ab5770c10c19a83fd7f0dc120a01d5a14801ea67f71`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 실제 운영 흐름(A04~A13)에 맞춘 정식 모델이다. `implemented`는 실제 테이블이 있고 시험(`tests/prototype/test_ontology.py`)이 열·타입·NULL·FK·UNIQUE 일치를 검사한다. `planned`는 표시된 단계에서 구현한다.
@@ -15,12 +15,12 @@
 | [AuthSession](#authsession) | kernel | 구현됨 | 테이블 `auth_sessions` | 로그인 세션. 토큰 원문은 저장하지 않는다 |
 | [AccessLog](#accesslog) | kernel | 구현됨 | 테이블 `access_logs` | 누가 언제 어느 대상에 무엇을 했는지 한 줄. 해시 사슬로 변조를 찾는다 |
 | [AccessLogReview](#accesslogreview) | kernel | 구현됨 | 테이블 `access_log_reviews` | 개인정보 책임자의 접속기록 점검 |
-| [Patient](#patient) | kernel | 예정(Stage A-2) | 테이블 `patients` | 차트번호당 1명. 여러 업무 모듈이 함께 쓴다 |
-| [Exam](#exam) | endoscopy_pathology | 예정(Stage A-2) | 테이블 `exams` | 검사 1건(조직검사·CLO·Stool). 단계는 저장하지 않고 연결된 기록으로 계산한다 |
-| [Specimen](#specimen) | endoscopy_pathology | 예정(Stage A-2) | 테이블 `specimens` | 검사 1건의 검체 묶음과 인계 3자(접수인·인계인·인수인) |
-| [ExamResult](#examresult) | endoscopy_pathology | 예정(Stage A-2) | 테이블 `exam_results` | 결과 1건. 등록 코드 표기만 저장한다(A11) |
-| [DoctorReview](#doctorreview) | endoscopy_pathology | 예정(Stage A-2) | 테이블 `doctor_reviews` | 원장 지시 1건(재검 필요 또는 불필요) |
-| [FollowUp](#followup) | endoscopy_pathology | 예정(Stage A-2) | 테이블 `followups` | 원장이 정한 재검 계획 1건. Stage C에서 Recall로 일반화한다 |
+| [Patient](#patient) | kernel | 구현됨 | 테이블 `patients` | 차트번호당 1명. 여러 업무 모듈이 함께 쓴다 |
+| [Exam](#exam) | endoscopy_pathology | 구현됨 | 테이블 `exams` | 검사 1건(조직검사·CLO·Stool). 단계는 저장하지 않고 연결된 기록으로 계산한다 |
+| [Specimen](#specimen) | endoscopy_pathology | 구현됨 | 테이블 `specimens` | 검사 1건의 검체 묶음과 인계 3자(접수인·인계인·인수인) |
+| [ExamResult](#examresult) | endoscopy_pathology | 구현됨 | 테이블 `exam_results` | 결과 1건. 등록 코드 표기만 저장한다(A11) |
+| [DoctorReview](#doctorreview) | endoscopy_pathology | 구현됨 | 테이블 `doctor_reviews` | 원장 지시 1건(재검 필요 또는 불필요) |
+| [FollowUp](#followup) | endoscopy_pathology | 구현됨 | 테이블 `followups` | 원장이 정한 재검 계획 1건. Stage C에서 Recall로 일반화한다 |
 | [Handoff](#handoff) | endoscopy_pathology | 구현됨 | 테이블 `ledger_handoffs` | 하루 한 번 이상의 검체 인계. 병 수 대조 결과를 남긴다 |
 | [ImportBatch](#importbatch) | endoscopy_pathology | 구현됨 | 테이블 `ledger_import_batches` | 엑셀 가져오기 1회 |
 | [LedgerExport](#ledgerexport) | endoscopy_pathology | 구현됨 | 테이블 `ledger_exports` | 지정 원내 폴더로의 엑셀 출력 1회 |
@@ -152,21 +152,20 @@
 
 차트번호당 1명. 여러 업무 모듈이 함께 쓴다
 
-위치 `kernel` · 예정(Stage A-2) · 테이블 `patients` · FHIR `Patient`
+위치 `kernel` · 구현됨 · 테이블 `patients` · FHIR `Patient`
 
 | 필드 | 타입 | NULL | 제약 |
 |---|---|---|---|
 | chart_no | string | 금지 | unique=True |
 | name | string | 금지 | — |
-| sex | enum | 허용 | enum Sex |
 
-제약: 같은 차트번호에 다른 이름이 들어오면 덮어쓰지 않고 거부 / 주민번호·연락처·주소는 저장하지 않음
+제약: 같은 차트번호에 다른 이름이 들어오면 덮어쓰지 않고 거부 / 주민번호·연락처·주소는 저장하지 않음 / 성별·나이는 장부 행마다 적힌 값이라 Exam에 둔다
 
 ### Exam
 
 검사 1건(조직검사·CLO·Stool). 단계는 저장하지 않고 연결된 기록으로 계산한다
 
-위치 `endoscopy_pathology` · 예정(Stage A-2) · 테이블 `exams` · FHIR `ServiceRequest / Procedure`
+위치 `endoscopy_pathology` · 구현됨 · 테이블 `exams` · FHIR `ServiceRequest / Procedure`
 
 | 필드 | 타입 | NULL | 제약 |
 |---|---|---|---|
@@ -175,6 +174,7 @@
 | exam_date | date | 금지 | — |
 | procedure_type | enum | 허용 | enum ProcedureType |
 | age | integer | 허용 | — |
+| sex | enum | 허용 | enum Sex |
 | report_ref | string | 허용 | — |
 | source | enum | 금지 | enum EntrySource |
 | import_batch_id | uuid | 허용 | FK → ImportBatch (importedIn) |
@@ -182,13 +182,13 @@
 
 복합 UNIQUE: `kind, report_ref`
 
-제약: age는 검사 당시 나이 / report_ref는 수탁기관 접수번호 / version은 화면 동시 수정 확인용
+제약: age는 검사 당시 나이 / sex는 장부 행에 적힌 값 그대로(다른 행으로 채우지 않음) / report_ref는 수탁기관 접수번호 / version은 화면 동시 수정 확인용
 
 ### Specimen
 
 검사 1건의 검체 묶음과 인계 3자(접수인·인계인·인수인)
 
-위치 `endoscopy_pathology` · 예정(Stage A-2) · 테이블 `specimens` · FHIR `Specimen`
+위치 `endoscopy_pathology` · 구현됨 · 테이블 `specimens` · FHIR `Specimen`
 
 | 필드 | 타입 | NULL | 제약 |
 |---|---|---|---|
@@ -207,7 +207,7 @@
 
 결과 1건. 등록 코드 표기만 저장한다(A11)
 
-위치 `endoscopy_pathology` · 예정(Stage A-2) · 테이블 `exam_results` · FHIR `DiagnosticReport`
+위치 `endoscopy_pathology` · 구현됨 · 테이블 `exam_results` · FHIR `DiagnosticReport`
 
 | 필드 | 타입 | NULL | 제약 |
 |---|---|---|---|
@@ -224,7 +224,7 @@
 
 원장 지시 1건(재검 필요 또는 불필요)
 
-위치 `endoscopy_pathology` · 예정(Stage A-2) · 테이블 `doctor_reviews` · FHIR `직접 대응 없음`
+위치 `endoscopy_pathology` · 구현됨 · 테이블 `doctor_reviews` · FHIR `직접 대응 없음`
 
 | 필드 | 타입 | NULL | 제약 |
 |---|---|---|---|
@@ -239,7 +239,7 @@
 
 원장이 정한 재검 계획 1건. Stage C에서 Recall로 일반화한다
 
-위치 `endoscopy_pathology` · 예정(Stage A-2) · 테이블 `followups` · FHIR `ServiceRequest`
+위치 `endoscopy_pathology` · 구현됨 · 테이블 `followups` · FHIR `ServiceRequest`
 
 | 필드 | 타입 | NULL | 제약 |
 |---|---|---|---|
@@ -421,7 +421,7 @@ Sydney 표기 HP-/Neu++/Mon++/Atr+/IM-의 구조화
 
 ## 전환기 테이블
 
-- `ledger_entries`: Stage A-2에서 Patient·Exam·Specimen·ExamResult·DoctorReview·FollowUp으로 이전
+- `ledger_entries_legacy`: Stage A-2 이전 시점 사본(0003). 새 기록이 반영되지 않으며 다음 리비전에서 삭제
 
 ## 규칙
 

@@ -24,7 +24,7 @@ GitHub 저장소: [corcoidum/coriops-nexus](https://github.com/corcoidum/coriops
 
 같은 날 제안한 씨젠 자동 조회·Excel 갱신 설계 [ADR-005](docs/decisions/ADR-005-seegene-excel-integration.md)는 보류한다. 환자별 다음 내시경 시점은 원장이 결정하며, 첫 화면에서는 사람이 그 날짜를 입력한다.
 
-2026-10-25: 검진 혈액검체 결과 대장을 조직검체 대장과 별도 모듈(`app/modules/screening_lab/`)로 진행한다. 원내 실제 서식(제목 줄 + 12열, A18)으로 합성 Excel 프로토타입을 구현했다. [계획·확정 사항](docs/blood-ledger-plan.md)
+2026-10-25: 검진 혈액검체 결과 대장을 조직검체 대장과 별도 모듈(`app/modules/screening_lab/`)로 진행한다. 원내 실제 서식(제목 줄 + 12열, A19)으로 합성 Excel 프로토타입을 구현했다. [계획·확정 사항](docs/blood-ledger-plan.md)
 
 ## 먼저 검토할 문서
 

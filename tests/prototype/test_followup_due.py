@@ -108,7 +108,7 @@ def test_followup_list_export_writes_only_the_filtered_people(service, tmp_path)
     rows = list(sheet.iter_rows(min_row=4, values_only=True))
     assert [(r[1], r[5]) for r in rows] == [("재검 기한 10일 경과", "T-0010"), ("재검 기한 3일 경과", "F-0004"),
                                             ("재검일 오늘", "F-0001")]
-    assert rows[1][2] == "CLO" and rows[2][6] == "재검01"  # 연락용 목록이라 이름은 그대로
+    assert rows[1][2] == "RUT(CLO)" and rows[2][6] == "재검01"  # 연락용 목록이라 이름은 그대로
     assert service.snapshot()["exports"][0].file_name == record.file_name
 
 

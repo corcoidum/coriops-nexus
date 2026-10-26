@@ -1,0 +1,44 @@
+{% extends "ledger_base.html" %}
+{% block content %}
+    <div class="page-heading"><div><span class="eyebrow">PAPER LEDGER</span><h1>종이 대장 대조</h1><p>원내 종이 대장과 같은 열 순서로 보여줍니다. 한 줄씩 맞춰 보고, 필요하면 같은 양식으로 지정 폴더에 출력합니다.</p></div></div>
+    {% if notice %}<p class="notice" role="status">✓ {{ notice }}</p>{% endif %}
+
+    <nav class="kind-tabs" aria-label="종이 대장">
+      {% for key, spec in forms.items() %}<a href="/ledger/paper?form={{ key }}&amp;date_from={{ start.isoformat() }}&amp;date_to={{ end.isoformat() }}" class="{% if key == form %}active{% endif %}">{{ spec.short }}</a>{% endfor %}
+    </nav>
+
+    <section class="panel paper-panel" aria-labelledby="paper-title">
+      <div class="paper-toolbar">
+        <form class="due-range" action="/ledger/paper" method="get">
+          <input type="hidden" name="form" value="{{ form }}">
+          <label for="date_from">{% if form == 'specimen' %}시행날짜{% else %}날짜{% endif %}</label>
+          <input type="date" id="date_from" name="date_from" value="{{ start.isoformat() }}" required>
+          <span>~</span>
+          <input type="date" id="date_to" name="date_to" value="{{ end.isoformat() }}" required>
+          <button class="button secondary" type="submit">기간 보기</button>
+        </form>
+        {% if can_export %}<form action="/ledger/paper/export" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="form" value="{{ form }}"><input type="hidden" name="date_from" value="{{ start.isoformat() }}"><input type="hidden" name="date_to" value="{{ end.isoformat() }}">
+          <button class="button primary" type="submit" {% if not rows %}disabled{% endif %}>같은 양식으로 엑셀 저장 ({{ rows|length }}줄)</button>
+        </form>{% endif %}
+      </div>
+      <h2 id="paper-title" class="paper-title">{{ title }}</h2>
+      <p class="paper-period">{{ start.strftime('%Y.%m.%d') }} ~ {{ end.strftime('%Y.%m.%d') }} · {{ rows|length }}줄 · 화면에서는 성명 가운데를 가립니다(출력 파일에는 전체 성명)</p>
+      <div class="table-scroll"><table class="paper-table">
+        <thead><tr>{% for header in headers %}<th>{{ header|replace('\n', ' ') }}</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for row in rows %}
+          {% if form == 'specimen' %}
+          <tr><td>{{ row.exam_date.strftime('%Y.%m.%d') }}</td><td>{{ row.chart_no }}</td><td>{{ row.display_name }}</td><td>{{ row.procedure }}</td><td>{{ row.biopsy_text }}</td><td>{{ row.rut_done }}</td><td>{{ row.rut_result }}</td></tr>
+          {% else %}
+          <tr><td>{{ row.exam_date.strftime('%Y.%m.%d') }}</td><td>{{ row.report_ref }}</td><td>{{ row.chart_no }}</td><td>{{ row.display_name }}</td><td>{{ row.sex_age }}</td><td>{{ row.site }}</td><td>{{ row.registered_by }}</td><td>{{ row.entrusted_on.strftime('%Y.%m.%d') if row.entrusted_on else '' }}</td><td>{{ row.handed_by }}</td><td>{{ row.received_by }}</td><td>{{ row.reported_on.strftime('%Y.%m.%d') if row.reported_on else '' }}</td><td>{{ row.result }}</td></tr>
+          {% endif %}
+        {% else %}
+          <tr><td colspan="{{ headers|length }}" class="empty">이 기간에 기록이 없습니다.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <p class="field-help">{% if form == 'specimen' %}내시경 1회(조직검사 + RUT)를 한 줄로 묶었습니다. 조직검사·RUT가 모두 없는 내시경은 앱에 올리지 않으므로 종이 대장에만 있습니다.{% else %}조직검사 건만 보입니다(위·대장). 서명 칸에는 앱에 기록된 이름이 들어가며, 종이 대장의 서명을 대신하지 않습니다.{% endif %}</p>
+    </section>
+{% endblock %}

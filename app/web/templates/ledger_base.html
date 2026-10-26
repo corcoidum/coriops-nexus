@@ -20,6 +20,7 @@
   <a class="nav-item {% if nav == '/dashboard' and stage != 'FOLLOWUP' %}active{% endif %}" href="/dashboard"><span aria-hidden="true">▦</span> 조직검체 장부</a>
   <a class="nav-item {% if nav == '/dashboard' and stage == 'FOLLOWUP' and due == 'due' %}active{% endif %}" href="/dashboard?stage=FOLLOWUP&amp;due=due"><span aria-hidden="true">⚑</span> 재검 도래{% if flags is defined and flags.followup_due %} <span class="nav-badge">{{ flags.followup_due }}</span>{% endif %}</a>
   <a class="nav-item {% if nav == '/dashboard' and stage == 'FOLLOWUP' and due != 'due' %}active{% endif %}" href="/dashboard?stage=FOLLOWUP"><span aria-hidden="true">◷</span> 재검 대상</a>
+  <a class="nav-item {% if nav == '/ledger/paper' %}active{% endif %}" href="/ledger/paper"><span aria-hidden="true">▤</span> 종이 대장 대조</a>
   <a class="nav-item {% if nav == '/ledger/excel' %}active{% endif %}" href="/ledger/excel"><span aria-hidden="true">⇅</span> 엑셀 가져오기·출력</a>
   </div>
   {% if lab %}
