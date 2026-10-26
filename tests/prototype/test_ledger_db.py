@@ -146,3 +146,14 @@ def test_import_into_postgres_and_reset_is_refused(store):
         service.reset()
     assert error.value.status_code == 403
     assert len(store.entries()) == 7
+
+
+def test_paper_ledger_intake_saves_two_exams_for_one_patient(store, engine):
+    """종이 검체 관리 장부 한 줄(조직검사 + RUT)은 같은 환자 1명에 검사 2건으로 한 번에 저장된다(A15)."""
+    service = ManualDashboardService(clock=FixedClock(), store=store)
+    ids = service.register_endoscopy("T-9200", "테스트종이", date(2026, 11, 5), "F/56", "stomach", True, "antrum",
+                                     "2", True)
+    saved = {e.id: e for e in PostgresStore(engine).entries()}
+    assert [(saved[i].kind, saved[i].sex, saved[i].age) for i in ids] == [("BIOPSY", "F", 56), ("CLO", "F", 56)]
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM patients")).scalar_one() == 1

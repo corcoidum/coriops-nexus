@@ -35,7 +35,7 @@
 | 0 Foundation | README·개인정보 원칙·Python·pytest·CI·AGENTS.md | ✅ | `pyproject.toml`, `tests/` 299개, `.github/workflows/ci.yml`, `AGENTS.md` |
 | 1 Ontology | Entity·관계·상태·FHIR | ✅ v0.2 | `ontology/coriops.yaml` v0.2 21클래스(구현 18·예정 3)·`scripts/gen_docs.py`·YAML=코드=DB 일치 시험 |
 | 2 PostgreSQL ERD | 테이블·FK·제약·마이그레이션·감사 필드 | ✅ | Alembic 0001~0003. `patients`·`exams`·`specimens`·`exam_results`·`doctor_reviews`·`followups` |
-| 3 Endoscopy + Specimen MVP | 접수 → 인계 → 결과 → 원장 지시 → 재검 | ✅ | DB 저장 장부, 3자 인계·병 수 대조, 엑셀 가져오기·대조·출력 |
+| 3 Endoscopy + Specimen MVP | 접수 → 인계 → 결과 → 원장 지시 → 재검 | ✅ | DB 저장 장부, 3자 인계·병 수 대조, 엑셀 가져오기·대조·출력, 종이 대장 ①·② 대조·같은 양식 출력(A15) |
 | 4 Rule Engine | 규칙이 누락을 찾아냄 | 🔴 | 지연·도래는 화면에서 즉석 계산. `config/rules.yaml`은 설계만 |
 | 5 Task Engine | 담당·상태·출처가 있는 Task | 🔴 | Task 테이블 없음 |
 | 6 Lab Integration | 씨젠 결과 → Observation | ⚪ | — |

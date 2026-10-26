@@ -4,26 +4,26 @@ status: REQUIRES_OWNER_APPROVAL_BEFORE_REAL_DATA
 # 장부 종류. 시트 이름은 기존 엑셀 파일의 탭 이름이다.
 kinds:
   BIOPSY: {label: 조직검사, sheet_names: [Biopsy, 조직검체장부], handoff: true, result_format: codes}
-  # [가정] CLO는 원내 판독이라 씨젠 인계가 없다. 실제와 다르면 handoff를 true로 바꾼다.
-  CLO: {label: CLO, sheet_names: [CLO], handoff: false, result_format: short}
+  # CLO = 종이 검체 관리 장부의 RUT. 원내 판정이라 수탁기관 인계가 없다(A15에서 확인).
+  CLO: {label: RUT(CLO), sheet_names: [CLO], handoff: false, result_format: short}
   # [가정] Stool은 수탁기관으로 보낸다. 실제와 다르면 handoff를 false로 바꾼다.
   STOOL: {label: Stool, sheet_names: [Stool], handoff: true, result_format: short}
 # 엑셀 헤더 → 저장 필드. 세 시트가 같은 사전을 쓴다. 헤더 이름이 다르면 여기에 별칭을 추가한다.
 fields:
-  exam_date: [검사일]
+  exam_date: [검사일, 시행날짜]
   report_ref: [접수번호]
   chart_no: [차트번호]
   patient_name: [수진자명, 이름, 성명]
   age: [나이]
   sex: [성별]
-  entrusted_on: [위탁일]
+  entrusted_on: [위탁일, 위탁날짜]
   registered_by: [접수인]
-  procedure_type: [검사종류]
-  site: [검사위치]
+  procedure_type: [검사종류, 검사명]
+  site: [검사위치, 부위]
   specimen_count: [검체수량]
   handed_by: [인계인]
-  received_by: [인수인]
-  reported_on: [결과보고일]
+  received_by: [인수인, 수령인]
+  reported_on: [결과보고일, 회신날짜]
   result: [조직검사결과, 검사결과, 결과]
   sydney: [특이소견]
 required_fields: [exam_date, chart_no, patient_name]

@@ -1265,3 +1265,106 @@ input:focus,select:focus {
   padding:1px 7px;
   margin-left:6px;
 }
+
+/* 접수 폼 탭·체크 · 종이 대장 대조 (A15) */
+.form-tabs {
+  display:flex;
+  gap:6px;
+  margin-bottom:14px;
+}
+
+.form-tabs a {
+  font-size:11px;
+  color:#5f7180;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:6px 12px;
+}
+
+.form-tabs a.active {
+  background:var(--nav);
+  border-color:var(--nav);
+  color:#fff;
+}
+
+.check-group {
+  border:1px solid #dfe7ed;
+  border-radius:6px;
+  padding:10px 12px;
+  margin:12px 0 0;
+}
+
+.check-group legend {
+  font-size:11px;
+  font-weight:600;
+  padding:0 4px;
+}
+
+.check-group label.check {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-weight:500;
+  margin:0 0 8px;
+}
+
+.check-group input[type=checkbox] {
+  width:auto;
+  min-height:0;
+}
+
+.paper-panel {
+  padding:18px 20px;
+}
+
+.paper-toolbar .due-range {
+  flex-wrap:wrap;
+}
+
+.paper-toolbar {
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  margin-bottom:14px;
+}
+
+.paper-title {
+  text-align:center;
+  font-size:18px;
+  text-decoration:underline;
+  margin:4px 0 4px;
+}
+
+.paper-period {
+  text-align:right;
+  font-size:10px;
+  color:#7b8a96;
+  margin:0 0 8px;
+}
+
+.paper-table th {
+  background:#eeeae0;
+  color:#3a3a3a;
+  white-space:nowrap;
+}
+
+.paper-table td,.paper-table th {
+  border:1px solid #c9c9c9;
+}
+
+.paper-table td.empty {
+  text-align:center;
+  color:#7b8a96;
+}
+
+@media(max-width:950px) {
+  .paper-panel {
+    padding:14px 12px;
+  }
+
+  .paper-toolbar .due-range input {
+    width:100%;
+  }
+}

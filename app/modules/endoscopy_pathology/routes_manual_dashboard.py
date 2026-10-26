@@ -13,7 +13,8 @@ from fastapi.responses import RedirectResponse
 
 from app.kernel.web import audit, check_csrf, render, require
 
-from .manual_dashboard import DashboardError, ManualDashboardService, form_date
+from .excel_io import PAPER_FORMS
+from .manual_dashboard import DashboardError, ManualDashboardService, form_date, parse_sex_age
 
 
 router = APIRouter()
@@ -24,6 +25,7 @@ NOTICES = {
     "imported": "가져오기를 마쳤습니다. 신규 행만 저장했습니다.",
     "exported": "지정 폴더에 엑셀을 저장했습니다.",
     "followups_exported": "재검 대상자 목록을 지정 폴더에 저장했습니다.",
+    "paper_exported": "종이 대장 양식으로 지정 폴더에 저장했습니다.",
 }
 
 
@@ -52,11 +54,12 @@ def home():
 @router.get("/dashboard")
 def dashboard(request: Request, service: Service, stage: str = "ALL", kind: str = "ALL",
               selected_id: UUID | None = None, q: str = "", page: int = 1, new: bool = False, notice: str = "",
-              due: str = "", due_from: str = "", due_to: str = ""):
+              due: str = "", due_from: str = "", due_to: str = "", new_kind: str = ""):
     actor = require(request, "ledger.view")
     context = service.snapshot(stage=stage, selected_id=selected_id, query=q, kind=kind, page=page, due=due,
                                due_from=form_date(due_from), due_to=form_date(due_to))
-    context.update(new=new, notice=NOTICES.get(notice, ""), can_export=actor.can("excel.export"))
+    context.update(new=new, new_kind="STOOL" if new_kind == "STOOL" else "", notice=NOTICES.get(notice, ""),
+                   can_export=actor.can("excel.export"))
     # 화면에 나가기 전에 기록한다. 기록이 실패하면 화면도 나가지 않는다.
     audit(request, "LIST", "ledger_list", subjects=[c.chart_no for c in context["cases"]])
     if context["selected"] is not None and not new:
@@ -68,13 +71,23 @@ def dashboard(request: Request, service: Service, stage: str = "ALL", kind: str 
 def register(request: Request, service: Service, kind: Annotated[str, Form()] = "",
              chart_no: Annotated[str, Form()] = "", patient_name: Annotated[str, Form()] = "",
              exam_date: Annotated[str, Form()] = "", sex: Annotated[str, Form()] = "",
-             age: Annotated[str, Form()] = "", procedure_type: Annotated[str, Form()] = "",
-             specimen_count: Annotated[str, Form()] = "", site: Annotated[str, Form()] = ""):
+             age: Annotated[str, Form()] = "", sex_age: Annotated[str, Form()] = "",
+             procedure_type: Annotated[str, Form()] = "", specimen_count: Annotated[str, Form()] = "",
+             site: Annotated[str, Form()] = "", biopsy: Annotated[str, Form()] = "",
+             rut: Annotated[str, Form()] = ""):
     require(request, "ledger.register")
-    entry_id = service.register(kind, chart_no, patient_name, form_date(exam_date), sex, age.strip(),
-                                procedure_type, specimen_count.strip(), site)
-    audit(request, "CREATE", "ledger_entry", subjects=[service.subject_of(entry_id)])
-    return redirect(selected_id=entry_id, notice="registered")
+    if kind == "ENDOSCOPY":
+        # 종이 검체 관리 장부(①) 한 줄: 조직검사·RUT 건을 함께 만든다.
+        entry_ids = service.register_endoscopy(chart_no, patient_name, form_date(exam_date), sex_age,
+                                               procedure_type, biopsy == "on", site, specimen_count.strip(),
+                                               rut == "on")
+    else:
+        if sex_age.strip():
+            sex, age = parse_sex_age(sex_age)
+        entry_ids = [service.register(kind, chart_no, patient_name, form_date(exam_date), sex, age.strip(),
+                                      procedure_type, specimen_count.strip(), site)]
+    audit(request, "CREATE", "ledger_entry", subjects=service.subjects_of(entry_ids))
+    return redirect(selected_id=entry_ids[0], notice="registered")
 
 
 @router.post("/ledger/handoff", dependencies=[Csrf])
@@ -191,6 +204,27 @@ def export_followups(request: Request, service: Service, kind: Annotated[str, Fo
     audit(request, "EXPORT", "followup_list", subjects=subjects, count=record.row_count)
     return redirect(stage="FOLLOWUP", kind=kind, q=q, due=due, due_from=due_from, due_to=due_to,
                     notice="followups_exported")
+
+
+@router.get("/ledger/paper")
+def paper(request: Request, service: Service, form: str = "specimen", date_from: str = "", date_to: str = "",
+          notice: str = ""):
+    """종이 대장(①·②)과 같은 열 순서로 기간의 기록을 보여준다. 이름은 가린다."""
+    actor = require(request, "ledger.view")
+    context = service.paper_rows(form, form_date(date_from), form_date(date_to))
+    context.update(forms=PAPER_FORMS, notice=NOTICES.get(notice, ""), can_export=actor.can("excel.export"))
+    audit(request, "LIST", "paper_ledger", subjects=[row["chart_no"] for row in context["rows"]])
+    return render(request, "ledger_paper.html", context)
+
+
+@router.post("/ledger/paper/export", dependencies=[Csrf])
+def paper_export(request: Request, service: Service, form: Annotated[str, Form()] = "specimen",
+                 date_from: Annotated[str, Form()] = "", date_to: Annotated[str, Form()] = ""):
+    require(request, "excel.export")
+    record, subjects = service.export_paper(form, form_date(date_from), form_date(date_to))
+    # 종이 대장 양식에는 이름이 그대로 들어가므로 환자별로 기록한다.
+    audit(request, "EXPORT", "paper_ledger", subjects=subjects, count=record.row_count)
+    return redirect("/ledger/paper", form=form, date_from=date_from, date_to=date_to, notice="paper_exported")
 
 
 @router.post("/ledger/reset", dependencies=[Csrf])
