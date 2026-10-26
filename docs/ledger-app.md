@@ -143,6 +143,10 @@ DB 자료는 Docker 볼륨 `ledger-data`에 남는다. `down -v`는 볼륨을 �
 - 원장 지시·재검 완료를 기록한 계정(`decided_by`·`done_by`)을 새로 남긴다. Stage A 이전 자료는 비어 있다(추측해서 채우지 않음).
 - 성별·나이는 장부 행마다 적힌 값을 그대로 둔다(같은 환자의 다른 행으로 채우거나 맞추지 않음).
 
+### 규칙과 할 일 (Stage B-1, A17)
+
+업무를 기록하거나 화면을 열 때 규칙 L01~L05가 돌아 할 일(`tasks`)을 열고 닫는다. 자세한 조건·기한은 [규칙 문서](rules.md)에 있다. B-1에서는 할 일을 DB에 저장만 하고, "오늘 할 일" 화면은 B-2에서 붙인다. Alembic 0004가 `rules`·`rule_runs`·`tasks`를 만들고 `ledger_entries_legacy`(Stage A 이전 시점 사본)를 지운다.
+
 ### 테이블 분리 이전 (Alembic 0003)
 
 서버를 시작하면 `ledger_entries`를 새 테이블로 옮긴다.
