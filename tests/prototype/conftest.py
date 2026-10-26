@@ -5,7 +5,7 @@ import socket
 
 import pytest
 
-from app.demo_server import is_loopback_address
+from app.demo_server import is_socketpair_loopback, scoped_socketpair
 
 
 @pytest.fixture(scope="session")
@@ -31,8 +31,8 @@ def restrict_network(monkeypatch, allowed_database):
     original_connect_ex = socket.socket.connect_ex
 
     def check(address):
-        # Windows asyncio·TestClient는 socketpair 대체 구현으로 loopback에 연결한다.
-        if is_loopback_address(address):
+        # Windows asyncio·TestClient의 socketpair 대체 구현이 만드는 loopback 연결만 예외로 둔다.
+        if is_socketpair_loopback(address):
             return
         if not isinstance(address, tuple) or address[0] not in allowed or address[1] != port:
             raise PermissionError("EXTERNAL_NETWORK_DISABLED")
@@ -50,6 +50,7 @@ def restrict_network(monkeypatch, allowed_database):
         check(address)
         return original_connect_ex(sock, address)
 
+    monkeypatch.setattr(socket, "socketpair", scoped_socketpair(socket.socketpair))
     monkeypatch.setattr(socket, "getaddrinfo", resolve)
     monkeypatch.setattr(socket.socket, "connect", connect)
     monkeypatch.setattr(socket.socket, "connect_ex", connect_ex)

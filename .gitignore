@@ -23,3 +23,5 @@ __pycache__/
 .coverage
 htmlcov/
 .DS_Store
+build/
+*.egg-info/
