@@ -110,10 +110,12 @@
           <form action="/lab/cases/{{ selected.id }}/check" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label for="checked_by">확인한 직원 <span class="required">필수</span></label><input id="checked_by" name="checked_by" maxlength="20" required autocomplete="off">
+            <label for="followup_note">재검안내 <span class="optional">선택</span></label><input id="followup_note" name="followup_note" maxlength="40" placeholder="예: 11/20 재검 안내함" autocomplete="off">
+            <p class="field-help">추후 관리가 필요할 때만 짧게 적습니다. 판독·진단 문장은 적지 않습니다.</p>
             <button class="button primary full" type="submit">확인 완료 기록 <span aria-hidden="true">→</span></button>
           </form>
           {% else %}
-          <div class="complete-note"><strong>✓ 확인된 기록입니다.</strong><p>{{ selected.checked_by }} · {{ selected.checked_at.astimezone(kst).strftime('%Y.%m.%d %H:%M') }}</p></div>
+          <div class="complete-note"><strong>✓ 확인된 기록입니다.</strong><p>{{ selected.checked_by }} · {{ selected.checked_at.astimezone(kst).strftime('%Y.%m.%d %H:%M') }}</p>{% if r.followup_note %}<p>재검안내: {{ r.followup_note }}</p>{% endif %}</div>
           {% endif %}{% endif %}
         </div>
       {% else %}<div class="detail-body empty-state"><h2 id="detail-title">남은 업무가 없습니다</h2><a href="/lab">전체 보기</a></div>{% endif %}

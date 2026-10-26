@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from app.kernel.clock import Clock, SystemClock
 from app.kernel.web import UserError
 
-from .ledger import LabItem, LabLedgerPolicy, LabRecord, load_policy
+from .ledger import NOTE_MAX, LabItem, LabLedgerPolicy, LabRecord, load_policy
 from .ledger_demo import synthetic_records
 
 
@@ -196,13 +196,17 @@ class LabDashboardService:
             self._cases[case_id] = replace(
                 case, critical_reported_at=self._clock.now(), critical_reported_by=name)
 
-    def check(self, case_id: UUID, checked_by: str) -> None:
+    def check(self, case_id: UUID, checked_by: str, followup_note: str = "") -> None:
         with self._lock:
             case = self._get(case_id)
             if case.stage != "CHECK_PENDING":
                 raise UserError("확인 대기 항목에서 기록해 주세요.")
             name = self._name(checked_by, "확인한 직원")
-            self._cases[case_id] = replace(case, checked_at=self._clock.now(), checked_by=name)
+            note = followup_note.strip()
+            if len(note) > NOTE_MAX:
+                raise UserError(f"재검안내는 {NOTE_MAX}자 이내 메모로 적어 주세요.", 422)
+            record = replace(case.record, followup_note=note or None)
+            self._cases[case_id] = replace(case, record=record, checked_at=self._clock.now(), checked_by=name)
 
     def critical_pending_count(self) -> int:
         """모든 화면 상단 알림용. 건수만 돌려주고 환자 정보는 담지 않는다."""

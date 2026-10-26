@@ -87,9 +87,10 @@ def report_critical(request: Request, case_id: UUID, service: Service,
 
 
 @router.post("/lab/cases/{case_id}/check", dependencies=[Csrf])
-def check(request: Request, case_id: UUID, service: Service, checked_by: Annotated[str, Form()] = ""):
+def check(request: Request, case_id: UUID, service: Service, checked_by: Annotated[str, Form()] = "",
+          followup_note: Annotated[str, Form()] = ""):
     require(request, "ledger.result")
-    service.check(case_id, checked_by)
+    service.check(case_id, checked_by, followup_note)
     audit(request, "UPDATE", "lab_check", subjects=[service.subject_of(case_id)])
     return case_redirect(case_id)
 

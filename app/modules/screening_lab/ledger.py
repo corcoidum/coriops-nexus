@@ -20,7 +20,8 @@ import yaml
 type RecordKey = tuple[str, str]
 EXCEL_CELL_TEXT_LIMIT = 32767
 COLUMN_KINDS = {"date", "text", "manual", "sex_age", "exam_kinds", "lab_result"}
-COLUMN_COUNT = 12
+COLUMN_COUNT = 13
+NOTE_MAX = 40  # 재검안내 메모 길이. 문장형 판독을 막으려고 짧게 둔다
 HEADER_ROW = 2  # 1행은 대장 제목
 THIN = Side(style="thin", color="000000")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
@@ -53,6 +54,7 @@ class LabRecord:
     items: tuple[LabItem, ...] = ()
     # 직원이 결과를 입력했으나 H/L 항목이 하나도 없을 때(모두 정상) True. 항목이 있으면 자동으로 수신 상태다.
     result_received: bool = False
+    followup_note: str | None = None  # 재검안내(B22): 관리 메모만
 
     @property
     def received(self) -> bool:
@@ -209,6 +211,10 @@ def _validate_record(record: LabRecord, policy: LabLedgerPolicy) -> RecordKey:
     for value in (record.received_date, record.entrusted_date, record.report_date):
         if value is not None and type(value) is not date:
             raise ValueError("INVALID_DATE_TYPE")
+    if record.followup_note is not None and (
+        not isinstance(record.followup_note, str) or len(record.followup_note) > NOTE_MAX
+    ):
+        raise ValueError("INVALID_FOLLOWUP_NOTE")
     for value in (record.sex, record.age):
         if value is not None and not isinstance(value, str):
             raise ValueError("INVALID_TEXT_TYPE")
@@ -233,7 +239,7 @@ def _validate_record(record: LabRecord, policy: LabLedgerPolicy) -> RecordKey:
             raise ValueError("INVALID_QUALITATIVE_RESULT")
         if type(item.critical) is not bool:
             raise ValueError("INVALID_CRITICAL_FLAG")
-    texts = [record.report_ref, record.chart_no, record.patient_name, record.sex, record.age]
+    texts = [record.report_ref, record.chart_no, record.patient_name, record.sex, record.age, record.followup_note]
     texts += [", ".join(record.exam_kinds), policy.result_text(record)]
     for value in texts:
         if value is not None:
