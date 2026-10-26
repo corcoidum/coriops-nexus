@@ -97,7 +97,7 @@
 - 씨젠 XLSX → 검사 결과(Observation) → 원장 확인 Task. 지금의 엑셀 가져오기 방식을 재사용한다(메모리 읽기, 무저장 미리보기, 신규만 저장, 셀 값 없는 오류 보고)
 - 검진: 완료 → 결과 도착 → 원장 확인 → F/U 필요 Task
 - **완료 조건:** 가상 Lab 파일 가져오기, 항목 매핑, 환자 연결, 결과 미확인 Task 생성
-- 선행 시연(A15): 혈액검체 13열 합성 Excel·메모리 대시보드 탭(`/lab`, DB 모드에서는 꺼짐). Stage D 완료로 보지 않는다. [계획](docs/blood-ledger-plan.md)
+- 선행 시연(A15): 혈액검체 원내 서식(12열) 합성 Excel·메모리 대시보드 탭(`/lab`, DB 모드에서는 꺼짐). Stage D 완료로 보지 않는다. [계획](docs/blood-ledger-plan.md)
 
 ### Stage E — Clinic Dashboard v1.0 (초안 Phase 9)
 

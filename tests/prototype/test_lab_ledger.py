@@ -23,21 +23,22 @@ from app.modules.screening_lab.ledger_demo import synthetic_records
 
 SHEET_NAME = "혈액검체장부"
 HEADERS = (
-    "접수일",
+    "날짜",
     "접수번호",
     "차트번호",
-    "수진자명",
-    "성별",
-    "나이",
-    "검사종류",
-    "접수인",
-    "인계인",
-    "위탁일",
-    "수령인",
-    "결과보고일",
-    "결과란",
+    "성명",
+    "성별/나이",
+    "분류(일반/간)",
+    "접수인(서명)",
+    "위탁날짜",
+    "인계인(서명)",
+    "수령인(서명)",
+    "회신날짜",
+    "결과",
 )
-MANUAL_HEADERS = ("접수인", "인계인", "수령인")
+TITLE = "혈액병리검체 접수, 인계, 인수 및 회신결과 대장 (일반<6종.9종>/간)"
+FIRST_ROW = 3  # 1행 제목, 2행 열 이름
+MANUAL_HEADERS = ("접수인(서명)", "인계인(서명)", "수령인(서명)")
 
 
 def synthetic_record(**changes: object) -> LabRecord:
@@ -72,29 +73,31 @@ def workbook(policy):
     return new_workbook(policy)
 
 
-def row_values(workbook, row: int = 2) -> dict[str, object]:
+def row_values(workbook, row: int = FIRST_ROW) -> dict[str, object]:
     sheet = workbook[SHEET_NAME]
     return {header: sheet.cell(row=row, column=column).value for column, header in enumerate(HEADERS, start=1)}
 
 
 def test_headers_follow_user_order(workbook, policy):
     assert policy.headers == HEADERS
-    assert tuple(cell.value for cell in workbook[SHEET_NAME][1]) == HEADERS
+    sheet = workbook[SHEET_NAME]
+    assert tuple(cell.value for cell in sheet[2]) == HEADERS
+    assert sheet["A1"].value == TITLE and "A1:L1" in {str(r) for r in sheet.merged_cells.ranges}
 
 
 def test_one_row_holds_whole_patient_result(workbook, policy):
     result = merge_records(workbook, [synthetic_record()], policy)
     values = row_values(workbook)
     assert result.appended == 1
-    assert workbook[SHEET_NAME].max_row == 2
-    assert values["검사종류"] == "일반검진9종, 간검진(AFP)"
+    assert workbook[SHEET_NAME].max_row == FIRST_ROW
+    assert values["분류(일반/간)"] == "일반검진9종, 간검진(AFP)"
     assert values["접수번호"] == "00004321"
-    assert values["접수일"] == date(2026, 10, 19)
+    assert values["날짜"] == date(2026, 10, 19)
 
 
 def test_result_lists_only_flagged_items(workbook, policy):
     merge_records(workbook, [synthetic_record()], policy)
-    assert row_values(workbook)["결과란"] == "AST 52 H, HDL 31 L"
+    assert row_values(workbook)["결과"] == "AST 52 H, HDL 31 L"
 
 
 def test_all_normal_writes_normal_label(policy):
@@ -107,13 +110,13 @@ def test_no_items_leaves_result_blank(policy):
 
 def test_all_normal_row_shows_normal(workbook, policy):
     merge_records(workbook, [synthetic_record(items=(LabItem("ALT", "38"),))], policy)
-    assert row_values(workbook)["결과란"] == "정상"
+    assert row_values(workbook)["결과"] == "정상"
 
 
 def test_unregistered_item_name_is_written_and_reviewed(workbook, policy):
     record = synthetic_record(items=(LabItem("SGOT", "52", "H"), LabItem("미등록정상", "1")))
     result = merge_records(workbook, [record], policy)
-    assert row_values(workbook)["결과란"] == "SGOT 52 H"
+    assert row_values(workbook)["결과"] == "SGOT 52 H"
     assert [issue.code for issue in result.issues] == ["ITEM_NAME_UNREGISTERED"]
 
 
@@ -129,19 +132,19 @@ def test_manual_columns_stay_blank(workbook, policy):
 
 def test_staff_edits_are_preserved_on_rerun(workbook, policy):
     first = merge_records(workbook, [synthetic_record()], policy)
-    workbook[SHEET_NAME].cell(2, HEADERS.index("수령인") + 1, "직원A")
+    workbook[SHEET_NAME].cell(FIRST_ROW, HEADERS.index("수령인(서명)") + 1, "직원A")
     again = merge_records(workbook, [synthetic_record()], policy, fingerprints=first.fingerprints)
     assert again.appended == 0 and again.unchanged == 1
-    assert row_values(workbook)["수령인"] == "직원A"
+    assert row_values(workbook)["수령인(서명)"] == "직원A"
 
 
 def test_critical_value_creates_report_issue_and_highlight(workbook, policy):
     record = synthetic_record(items=(LabItem("Glu", "999", "H", critical=True),))
     result = merge_records(workbook, [record], policy)
-    column = HEADERS.index("결과란") + 1
+    column = HEADERS.index("결과") + 1
     assert [issue.code for issue in result.issues] == ["CRITICAL_REPORT"]
-    assert result.issues[0].row == 2
-    assert workbook[SHEET_NAME].cell(2, column).fill.fgColor.rgb.endswith("F8D7DA")
+    assert result.issues[0].row == FIRST_ROW
+    assert workbook[SHEET_NAME].cell(FIRST_ROW, column).fill.fgColor.rgb.endswith("F8D7DA")
 
 
 def test_non_critical_row_has_no_issue(workbook, policy):
@@ -154,7 +157,7 @@ def test_changed_source_is_reviewed_not_overwritten(workbook, policy):
     changed = synthetic_record(items=(LabItem("AST", "70", "H"),))
     again = merge_records(workbook, [changed], policy, fingerprints=first.fingerprints)
     assert [issue.code for issue in again.issues] == ["SOURCE_CHANGED"]
-    assert row_values(workbook)["결과란"] == "AST 52 H, HDL 31 L"
+    assert row_values(workbook)["결과"] == "AST 52 H, HDL 31 L"
 
 
 def test_existing_row_without_fingerprint_is_reviewed(workbook, policy):
@@ -178,7 +181,7 @@ def test_existing_row_without_fingerprint_is_reviewed(workbook, policy):
 def test_invalid_input_rejects_whole_batch(workbook, policy, changes, code):
     with pytest.raises(ValueError, match=code):
         merge_records(workbook, [synthetic_record(report_ref="OK-1"), synthetic_record(**changes)], policy)
-    assert workbook[SHEET_NAME].max_row == 1
+    assert workbook[SHEET_NAME].max_row == 2
 
 
 def test_duplicate_key_in_batch_rejected(workbook, policy):
@@ -191,12 +194,12 @@ def test_formula_like_text_is_stored_as_text(workbook, policy):
     content = BytesIO()
     workbook.save(content)
     reopened = load_workbook(BytesIO(content.getvalue()))
-    cell = reopened[SHEET_NAME].cell(2, HEADERS.index("수진자명") + 1)
+    cell = reopened[SHEET_NAME].cell(FIRST_ROW, HEADERS.index("성명") + 1)
     assert cell.data_type == "s" and cell.value == "=테스트()"
 
 
 def test_header_mismatch_rejected(workbook, policy):
-    workbook[SHEET_NAME].cell(1, 1, "검사일")
+    workbook[SHEET_NAME].cell(2, 1, "검사일")
     with pytest.raises(ValueError, match="HEADER_MISMATCH"):
         merge_records(workbook, [synthetic_record()], policy)
 
@@ -241,3 +244,22 @@ def test_policy_rejects_wrong_column_count(tmp_path, policy):
     )
     with pytest.raises(ValueError, match="INVALID_LEDGER_POLICY"):
         load_policy(broken)
+
+
+@pytest.mark.parametrize(("sex", "age", "expected"), [("F", "52", "F/52"), ("M", None, "M/"), (None, None, None)])
+def test_sex_and_age_share_one_cell(workbook, policy, sex, age, expected):
+    merge_records(workbook, [synthetic_record(sex=sex, age=age)], policy)
+    assert row_values(workbook)["성별/나이"] == expected
+
+
+def test_title_row_survives_reopen_and_rows_start_below_headers(workbook, policy):
+    merge_records(workbook, [synthetic_record(), synthetic_record(report_ref="00004322")], policy)
+    content = BytesIO()
+    workbook.save(content)
+    sheet = load_workbook(BytesIO(content.getvalue()))[SHEET_NAME]
+    assert sheet["A1"].value == TITLE
+    assert [sheet.cell(row, 2).value for row in (3, 4)] == ["00004321", "00004322"]
+    assert sheet.freeze_panes == "E3"
+    # 종이 출력용: 가로 A4 한 쪽 폭, 쪽마다 제목·열 이름 반복
+    assert sheet.page_setup.orientation == "landscape" and sheet.page_setup.fitToWidth == 1
+    assert sheet.print_title_rows == "$1:$2"

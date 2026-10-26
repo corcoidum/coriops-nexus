@@ -1,8 +1,9 @@
 version: '0.1-prototype'
 status: SYNTHETIC_ONLY
 sheet_name: 혈액검체장부
-freeze_panes: E2
-# 2026-10-25 사용자 제공 13열. 한 행 = 수진자 1명(접수 1건)의 전체 결과.
+# 2026-10-26 원내 실제 서식(A18). 1행 제목, 2행 열 이름, 3행부터 수진자 1명(접수 1건)당 한 행.
+title: 혈액병리검체 접수, 인계, 인수 및 회신결과 대장 (일반<6종.9종>/간)
+freeze_panes: E3
 key_fields: [report_ref, chart_no]
 # 한 수진자가 여러 종류를 함께 받을 수 있어 검사종류 셀에는 쉼표로 이어 적는다(B07 확정).
 exam_kinds: [일반검진6종, 일반검진9종, 간검진(AFP), 추가b형간염, 추가c형간염]
@@ -14,16 +15,16 @@ normal_label: 정상
 # 씨젠 Excel 항목명 → 약칭 대응은 B11(씨젠 파일 헤더) 확인 후 L4에서 정한다.
 item_names: [Hb, Glu, CHOL, TG, HDL, LDL, AST, ALT, GGT, Cr]
 columns:
-  - {header: 접수일, field: received_date, kind: date, width: 13}
-  - {header: 접수번호, field: report_ref, kind: text, width: 17}
-  - {header: 차트번호, field: chart_no, kind: text, width: 13}
-  - {header: 수진자명, field: patient_name, kind: text, width: 18}
-  - {header: 성별, field: sex, kind: text, width: 9}
-  - {header: 나이, field: age, kind: text, width: 9}
-  - {header: 검사종류, field: exam_kinds, kind: exam_kinds, width: 26}
-  - {header: 접수인, kind: manual, width: 12}
-  - {header: 인계인, kind: manual, width: 12}
-  - {header: 위탁일, field: entrusted_date, kind: date, width: 13}
-  - {header: 수령인, kind: manual, width: 12}
-  - {header: 결과보고일, field: report_date, kind: date, width: 14}
-  - {header: 결과란, field: items, kind: lab_result, width: 44}
+  - {header: 날짜, field: received_date, kind: date, width: 12}
+  - {header: 접수번호, field: report_ref, kind: text, width: 14}
+  - {header: 차트번호, field: chart_no, kind: text, width: 12}
+  - {header: 성명, field: patient_name, kind: text, width: 14}
+  # 성별과 나이를 'F/52'처럼 한 칸에 적는다. 나이는 입력 표기를 그대로 쓰며 생년월일로 계산하지 않는다.
+  - {header: 성별/나이, field: sex, kind: sex_age, width: 10}
+  - {header: 분류(일반/간), field: exam_kinds, kind: exam_kinds, width: 22}
+  - {header: 접수인(서명), kind: manual, width: 13}
+  - {header: 위탁날짜, field: entrusted_date, kind: date, width: 12}
+  - {header: 인계인(서명), kind: manual, width: 13}
+  - {header: 수령인(서명), kind: manual, width: 13}
+  - {header: 회신날짜, field: report_date, kind: date, width: 12}
+  - {header: 결과, field: items, kind: lab_result, width: 40}
