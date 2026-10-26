@@ -51,20 +51,39 @@ def home():
     return RedirectResponse("/dashboard", status_code=303)
 
 
-@router.get("/dashboard")
-def dashboard(request: Request, service: Service, stage: str = "ALL", kind: str = "ALL",
-              selected_id: UUID | None = None, q: str = "", page: int = 1, new: bool = False, notice: str = "",
-              due: str = "", due_from: str = "", due_to: str = "", new_kind: str = ""):
+def ledger_page(request: Request, service: ManualDashboardService, ledger: str, stage: str, kind: str,
+                selected_id: UUID | None, q: str, page: int, new: bool, notice: str, due: str, due_from: str,
+                due_to: str, positive: bool = False):
     actor = require(request, "ledger.view")
     context = service.snapshot(stage=stage, selected_id=selected_id, query=q, kind=kind, page=page, due=due,
-                               due_from=form_date(due_from), due_to=form_date(due_to))
-    context.update(new=new, new_kind="STOOL" if new_kind == "STOOL" else "", notice=NOTICES.get(notice, ""),
+                               due_from=form_date(due_from), due_to=form_date(due_to), ledger=ledger,
+                               positive=positive)
+    # 새 접수 폼: 조직검체 장부는 내시경(조직검사·RUT) 한 줄, 분변잠혈 대장은 Stool 1건(A22).
+    context.update(new=new, new_kind="STOOL" if ledger == "fobt" else "", notice=NOTICES.get(notice, ""),
                    can_export=actor.can("excel.export"))
     # 화면에 나가기 전에 기록한다. 기록이 실패하면 화면도 나가지 않는다.
     audit(request, "LIST", "ledger_list", subjects=[c.chart_no for c in context["cases"]])
     if context["selected"] is not None and not new:
         audit(request, "VIEW", "ledger_entry", subjects=[context["selected"].chart_no])
     return render(request, "manual_dashboard.html", context)
+
+
+@router.get("/dashboard")
+def dashboard(request: Request, service: Service, stage: str = "ALL", kind: str = "ALL",
+              selected_id: UUID | None = None, q: str = "", page: int = 1, new: bool = False, notice: str = "",
+              due: str = "", due_from: str = "", due_to: str = ""):
+    return ledger_page(request, service, "tissue", stage, kind, selected_id, q, page, new, notice, due,
+                       due_from, due_to)
+
+
+@router.get("/fobt")
+def fobt(request: Request, service: Service, stage: str = "ALL", kind: str = "ALL",
+         selected_id: UUID | None = None, q: str = "", page: int = 1, new: bool = False, notice: str = "",
+         due: str = "", due_from: str = "", due_to: str = "", positive: bool = False):
+    """분변잠혈 대장(A22). Stool만 걸러 보여주며 재검 날짜 없이 원장 확인만 기록한다(A23).
+    positive=1이면 양성 표기 결과(CFS 권고 대상)만 본다."""
+    return ledger_page(request, service, "fobt", stage, kind, selected_id, q, page, new, notice, due,
+                       due_from, due_to, positive)
 
 
 @router.post("/ledger/register", dependencies=[Csrf])
@@ -87,20 +106,20 @@ def register(request: Request, service: Service, kind: Annotated[str, Form()] = 
         entry_ids = [service.register(kind, chart_no, patient_name, form_date(exam_date), sex, age.strip(),
                                       procedure_type, specimen_count.strip(), site)]
     audit(request, "CREATE", "ledger_entry", subjects=service.subjects_of(entry_ids))
-    return redirect(selected_id=entry_ids[0], notice="registered")
+    return redirect(service.ledger_path_of(entry_ids[0]), selected_id=entry_ids[0], notice="registered")
 
 
 @router.post("/ledger/handoff", dependencies=[Csrf])
 def handoff(request: Request, service: Service, registered_by: Annotated[str, Form()] = "",
             handed_by: Annotated[str, Form()] = "", receiver_name: Annotated[str, Form()] = "",
-            confirmed_count: Annotated[str, Form()] = ""):
+            confirmed_count: Annotated[str, Form()] = "", ledger: Annotated[str, Form()] = "tissue"):
     require(request, "ledger.handoff")
     if not confirmed_count.isdigit() or len(confirmed_count) > 3:
         raise DashboardError("확인한 병 수를 숫자로 입력해 주세요.", 422)
     subjects = service.pending_handoff_subjects()
     service.handoff(registered_by, handed_by, receiver_name, int(confirmed_count))
     audit(request, "UPDATE", "ledger_handoff", subjects=subjects)
-    return redirect(stage="RESULT_PENDING", notice="handoff")
+    return redirect(service.ledger_path(ledger), stage="RESULT_PENDING", notice="handoff")
 
 
 @router.post("/ledger/cases/{entry_id}/receive", dependencies=[Csrf])
@@ -110,7 +129,7 @@ def receive(request: Request, entry_id: UUID, service: Service, report_ref: Anno
     require(request, "ledger.result")
     service.receive(entry_id, report_ref, result_notation, site_summary, sydney_notation)
     audit(request, "UPDATE", "ledger_result", subjects=[service.subject_of(entry_id)])
-    return redirect(selected_id=entry_id)
+    return redirect(service.ledger_path_of(entry_id), selected_id=entry_id)
 
 
 @router.post("/ledger/cases/{entry_id}/decide", dependencies=[Csrf])
@@ -119,16 +138,16 @@ def decide(request: Request, entry_id: UUID, service: Service, mode: Annotated[s
     actor = require(request, "ledger.decide")
     service.decide(entry_id, mode, form_date(due_date), reason, actor=actor.label)
     audit(request, "UPDATE", "ledger_decision", subjects=[service.subject_of(entry_id)])
-    return redirect(selected_id=entry_id)
+    return redirect(service.ledger_path_of(entry_id), selected_id=entry_id)
 
 
 @router.post("/ledger/bulk-decide", dependencies=[Csrf])
 def bulk_decide(request: Request, service: Service, entry_ids: Annotated[list[UUID], Form()] = (),
-                reason: Annotated[str, Form()] = ""):
+                reason: Annotated[str, Form()] = "", ledger: Annotated[str, Form()] = "tissue"):
     actor = require(request, "ledger.decide")
     count = service.bulk_not_required(list(entry_ids), reason, actor=actor.label)
     audit(request, "UPDATE", "ledger_decision_bulk", subjects=service.subjects_of(list(entry_ids)), count=count)
-    return redirect(stage="DOCTOR_PENDING", notice="bulk")
+    return redirect(service.ledger_path(ledger), stage="DOCTOR_PENDING", notice="bulk")
 
 
 @router.post("/ledger/cases/{entry_id}/followup-done", dependencies=[Csrf])
@@ -136,7 +155,7 @@ def followup_done(request: Request, entry_id: UUID, service: Service, done_on: A
     actor = require(request, "ledger.followup")
     service.complete_followup(entry_id, form_date(done_on), actor=actor.label)
     audit(request, "UPDATE", "ledger_followup", subjects=[service.subject_of(entry_id)])
-    return redirect(selected_id=entry_id)
+    return redirect(service.ledger_path_of(entry_id), selected_id=entry_id)
 
 
 @router.get("/ledger/excel")
@@ -197,19 +216,20 @@ def export(request: Request, service: Service):
 @router.post("/ledger/export/followups", dependencies=[Csrf])
 def export_followups(request: Request, service: Service, kind: Annotated[str, Form()] = "ALL",
                      q: Annotated[str, Form()] = "", due: Annotated[str, Form()] = "",
-                     due_from: Annotated[str, Form()] = "", due_to: Annotated[str, Form()] = ""):
+                     due_from: Annotated[str, Form()] = "", due_to: Annotated[str, Form()] = "",
+                     ledger: Annotated[str, Form()] = "tissue"):
     require(request, "excel.export")
-    record, subjects = service.export_followups(kind, q, due, form_date(due_from), form_date(due_to))
+    record, subjects = service.export_followups(kind, q, due, form_date(due_from), form_date(due_to), ledger)
     # 대상자 목록은 이름이 그대로 들어가므로 환자별로 기록한다.
     audit(request, "EXPORT", "followup_list", subjects=subjects, count=record.row_count)
-    return redirect(stage="FOLLOWUP", kind=kind, q=q, due=due, due_from=due_from, due_to=due_to,
+    return redirect(service.ledger_path(ledger), stage="FOLLOWUP", kind=kind, q=q, due=due, due_from=due_from, due_to=due_to,
                     notice="followups_exported")
 
 
 @router.get("/ledger/paper")
 def paper(request: Request, service: Service, form: str = "specimen", date_from: str = "", date_to: str = "",
           notice: str = ""):
-    """종이 대장(①·②)과 같은 열 순서로 기간의 기록을 보여준다. 이름은 가린다."""
+    """종이 대장(①·②·③)과 같은 열 순서로 기간의 기록을 보여준다. 이름은 가린다."""
     actor = require(request, "ledger.view")
     context = service.paper_rows(form, form_date(date_from), form_date(date_to))
     context.update(forms=PAPER_FORMS, notice=NOTICES.get(notice, ""), can_export=actor.can("excel.export"))

@@ -55,7 +55,9 @@ def case_in_stage(app, stage: str):
 
 
 def current_case(app, case_id: UUID):
-    return next(case for case in snapshot(app)["cases"] if case.id == case_id)
+    # 분변잠혈(STOOL)은 분변잠혈 대장 화면에만 보인다(A22).
+    cases = snapshot(app)["cases"] + snapshot(app, ledger="fobt")["cases"]
+    return next(case for case in cases if case.id == case_id)
 
 
 def post(client, app, path: str, **data: str):
@@ -92,16 +94,19 @@ def all_states(app):
 
 def test_seed_has_fourteen_independent_cases_in_every_stage(app):
     first = snapshot(app)
+    fobt = snapshot(app, ledger="fobt")
     second_app = make_app()
 
-    assert first["total"] == 14
-    assert len({case.id for case in first["cases"]}) == 14
+    # 합성 14건 중 분변잠혈 1건은 분변잠혈 대장에만 보인다(A22).
+    assert first["total"] == 13 and fobt["total"] == 1
+    assert len({case.id for case in first["cases"] + fobt["cases"]}) == 14
     assert first["counts"] == {
-        "HANDOFF_PENDING": 2, "RESULT_PENDING": 4, "DOCTOR_PENDING": 3, "FOLLOWUP": 3, "CLOSED": 2,
+        "HANDOFF_PENDING": 2, "RESULT_PENDING": 4, "DOCTOR_PENDING": 3, "FOLLOWUP": 3, "CLOSED": 1,
     }
+    assert fobt["counts"]["CLOSED"] == 1 and {case.kind for case in fobt["cases"]} == {"STOOL"}
     assert first["flags"] == {"result_delayed": 1, "code_review": 1, "imported_pending": 0,
-                              "followup_due": 1, "followup_overdue": 1, "followup_soon": 1}
-    assert {case.kind for case in first["cases"]} == {"BIOPSY", "CLO", "STOOL"}
+                              "followup_due": 1, "followup_overdue": 1, "followup_soon": 1, "positive_subjects": 0}
+    assert {case.kind for case in first["cases"]} == {"BIOPSY", "CLO"}
     assert snapshot(second_app)["counts"] == first["counts"]
     assert app.state.dashboard_service is not second_app.state.dashboard_service
 
@@ -503,6 +508,7 @@ def test_register_puts_new_exam_in_the_right_first_stage(client, app, kind, expe
     response = post(client, app, "/ledger/register", **register_data(kind=kind))
 
     assert response.status_code == 303
+    assert response.headers["location"].startswith("/fobt?" if kind == "STOOL" else "/dashboard?")
     entry_id = UUID(response.headers["location"].split("selected_id=")[1].split("&")[0])
     assert stage_of(app, entry_id) == expected
     entry = current_case(app, entry_id)
