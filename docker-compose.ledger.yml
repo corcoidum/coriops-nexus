@@ -39,6 +39,9 @@ services:
       - ${CORIOPS_EXPORT_HOST_DIR:?CORIOPS_EXPORT_HOST_DIR를 .env에 설정하세요}:/exports
     networks: [ledger-local, ledger-internal]
     read_only: true
+    # 엑셀 저장 때 openpyxl이 시트를 임시 파일로 쓴다. 디스크가 아닌 메모리(tmpfs)에만 두고 컨테이너가 멈추면 사라진다.
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     command: [python, -m, app.ledger_server]

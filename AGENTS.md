@@ -39,7 +39,8 @@
 python -m pip install '.[test]'
 python -m pyflakes app tests migrations scripts
 python scripts/gen_docs.py --check   # YAML을 고쳤으면 먼저 python scripts/gen_docs.py
-# PostgreSQL 16이 필요하다(docker compose --profile test 또는 로컬 설치).
+# PostgreSQL 16이 필요하다. 로컬 설치 또는 Docker:
+#   CORIOPS_TEST_DB_PASSWORD=<무작위 값> docker compose -f docker-compose.prototype.yml --profile test run --build --rm test
 PGHOST=127.0.0.1 PGPORT=5432 PGUSER=coriops_test PGDATABASE=coriops_test python -m pytest -q
 ```
 

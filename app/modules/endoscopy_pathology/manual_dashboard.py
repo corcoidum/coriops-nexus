@@ -26,8 +26,8 @@ from app.kernel.clock import Clock, SystemClock
 from app.kernel.web import UserError
 
 from .excel_io import (
-    Issue, LedgerAppConfig, LedgerReader, ParsedWorkbook, RowDraft, WorkbookError, build_followup_workbook,
-    build_workbook,
+    PAPER_FORMS, Issue, LedgerAppConfig, LedgerReader, ParsedWorkbook, RowDraft, WorkbookError,
+    build_followup_workbook, build_paper_workbook, build_workbook, format_sex_age,
 )
 from .ledger import save_new_workbook
 from .ledger_db import ConcurrentUpdate, LedgerStore, MemoryStore, replace_entry
@@ -50,6 +50,8 @@ PREVIEW_LIST_MAX = 200
 DUE_FILTERS = {"": "전체", "due": "재검 도래", "week": "이번 주", "month": "이번 달", "30d": "30일 이내",
                "range": "기간 지정"}
 DUE_RANGE_MAX_DAYS = 732
+# 종이 대장의 성별/나이 칸 표기(A15): M/65, F/56. 한쪽만 적어도 받는다.
+SEX_AGE = re.compile(r"^\s*([MFmf남여])?\s*/?\s*(\d{1,3})?\s*$")
 
 
 
@@ -376,43 +378,71 @@ class ManualDashboardService:
 
     # ---------- 접수·인계·결과·지시
 
+    def _new_entry(self, kind: str, chart_no: str, patient_name: str, exam_date: date | None, sex: str,
+                   age: str, procedure_type: str, specimen_count: str, site: str, now: datetime,
+                   stored: list[LedgerEntry]) -> LedgerEntry:
+        """접수 1건의 입력을 검사해 장부 한 줄을 만든다. 저장은 호출한 쪽이 한 번에 한다."""
+        kind = self._check_kind(kind)
+        chart_no = chart_no.strip()
+        if not CHART_NO.match(chart_no):
+            raise DashboardError("차트번호는 영문·숫자 1~20자로 입력해 주세요.", 422)
+        name = self._text(patient_name, "성명", 30)
+        if exam_date is None or exam_date > self._today():
+            raise DashboardError("시행날짜(오늘 이전)를 입력해 주세요.", 422)
+        if sex not in ("", "M", "F"):
+            raise DashboardError("성별을 선택해 주세요.", 422)
+        if age and not (age.isdigit() and int(age) <= 130):
+            raise DashboardError("나이는 0~130 숫자로 입력해 주세요.", 422)
+        if kind == "CLO":
+            procedure_type = "stomach"
+        if procedure_type not in ("", *PROCEDURE_LABELS):
+            raise DashboardError("검사명(stomach·colon)을 선택해 주세요.", 422)
+        if kind == "BIOPSY" and not procedure_type:
+            raise DashboardError("조직검사는 검사명(stomach·colon)을 선택해 주세요.", 422)
+        if specimen_count and not (specimen_count.isdigit() and 1 <= int(specimen_count) <= 99):
+            raise DashboardError("개수(병)는 1~99로 입력해 주세요.", 422)
+        if kind == "BIOPSY" and not specimen_count:
+            raise DashboardError("조직검사는 개수(병)를 입력해 주세요.", 422)
+        if any(e.chart_no == chart_no and e.patient_name != name for e in stored):
+            raise DashboardError("같은 차트번호에 다른 이름이 등록돼 있습니다. 차트번호를 확인해 주세요.", 422)
+        return LedgerEntry(
+            id=uuid4(), kind=kind, chart_no=chart_no, patient_name=name, exam_date=exam_date,
+            created_at=now, updated_at=now, sex=sex or None, age=int(age) if age else None,
+            procedure_type=procedure_type or None, specimen_count=int(specimen_count) if specimen_count else None,
+            site=self._text(site, "부위", 80, required=False),
+        )
+
     def register(self, kind: str, chart_no: str, patient_name: str, exam_date: date | None, sex: str = "",
                  age: str = "", procedure_type: str = "", specimen_count: str = "", site: str = "") -> UUID:
         """새 검사 1건 접수. 같은 차트번호에 다른 이름이면 덮어쓰지 않고 거부한다."""
         with self._lock:
-            kind = self._check_kind(kind)
-            chart_no = chart_no.strip()
-            if not CHART_NO.match(chart_no):
-                raise DashboardError("차트번호는 영문·숫자 1~20자로 입력해 주세요.", 422)
-            name = self._text(patient_name, "수진자명", 30)
-            if exam_date is None or exam_date > self._today():
-                raise DashboardError("검사일(오늘 이전)을 입력해 주세요.", 422)
-            if sex not in ("", "M", "F"):
-                raise DashboardError("성별을 선택해 주세요.", 422)
-            if age and not (age.isdigit() and int(age) <= 130):
-                raise DashboardError("나이는 0~130 숫자로 입력해 주세요.", 422)
-            if kind == "CLO":
-                procedure_type = "stomach"
-            if procedure_type not in ("", *PROCEDURE_LABELS):
-                raise DashboardError("검사종류를 선택해 주세요.", 422)
-            if kind == "BIOPSY" and not procedure_type:
-                raise DashboardError("조직검사는 위·대장 검사종류를 선택해 주세요.", 422)
-            if specimen_count and not (specimen_count.isdigit() and 1 <= int(specimen_count) <= 99):
-                raise DashboardError("검체수량은 1~99로 입력해 주세요.", 422)
-            if kind == "BIOPSY" and not specimen_count:
-                raise DashboardError("조직검사는 검체수량을 입력해 주세요.", 422)
-            stored = self._store.entries()
-            if any(e.chart_no == chart_no and e.patient_name != name for e in stored):
-                raise DashboardError("같은 차트번호에 다른 이름이 등록돼 있습니다. 차트번호를 확인해 주세요.", 422)
-            now = self._clock.now()
-            entry = LedgerEntry(
-                id=uuid4(), kind=kind, chart_no=chart_no, patient_name=name, exam_date=exam_date,
-                created_at=now, updated_at=now, sex=sex or None, age=int(age) if age else None,
-                procedure_type=procedure_type or None, specimen_count=int(specimen_count) if specimen_count else None,
-                site=self._text(site, "검사위치", 80, required=False),
-            )
+            entry = self._new_entry(kind, chart_no, patient_name, exam_date, sex, age, procedure_type,
+                                    specimen_count, site, self._clock.now(), self._store.entries())
             self._write(inserted=[entry])
             return entry.id
+
+    def register_endoscopy(self, chart_no: str, patient_name: str, exam_date: date | None, sex_age: str,
+                           procedure_type: str, biopsy: bool, site: str, specimen_count: str,
+                           rut: bool) -> list[UUID]:
+        """종이 검체 관리 장부(①) 한 줄 = 내시경 1회. 조직검사·RUT(CLO) 건을 함께 만들고 한 번에 저장한다."""
+        with self._lock:
+            sex, age = parse_sex_age(sex_age)
+            if procedure_type not in PROCEDURE_LABELS:
+                raise DashboardError("검사명(stomach·colon)을 선택해 주세요.", 422)
+            if not biopsy and not rut:
+                raise DashboardError("조직검사나 RUT 중 하나 이상을 선택해 주세요. 둘 다 없으면 장부에 올리지 않습니다.", 422)
+            if rut and procedure_type != "stomach":
+                raise DashboardError("RUT는 stomach 검사에서만 기록합니다.", 422)
+            now, stored = self._clock.now(), self._store.entries()
+            entries = []
+            if biopsy:
+                entries.append(self._new_entry("BIOPSY", chart_no, patient_name, exam_date, sex, age,
+                                               procedure_type, specimen_count, site, now, stored))
+            if rut:
+                entries.append(self._new_entry("CLO", chart_no, patient_name, exam_date, sex, age,
+                                               procedure_type, "", "", now, stored))
+            self._write(inserted=entries)
+            return [e.id for e in entries]
 
     def handoff(self, registered_by: str, handed_by: str, receiver_name: str, confirmed_count: int) -> None:
         """인계 대기 검체 전체를 한 번에 넘긴다. 확인 병 수가 장부와 다르면 기록하지 않는다."""
@@ -422,7 +452,7 @@ class ManualDashboardService:
                 raise DashboardError("인계할 검체가 없습니다.")
             limit = self._policy.staff_name_max_length
             names = (self._text(registered_by, "접수인", limit), self._text(handed_by, "인계인", limit),
-                     self._text(receiver_name, "인수인", limit))
+                     self._text(receiver_name, "수령인", limit))
             expected = sum(e.specimen_count or 1 for e in pending)
             if confirmed_count != expected:
                 raise DashboardError(
@@ -459,13 +489,14 @@ class ManualDashboardService:
                 raise DashboardError(str(error), 422) from None
             if sydney and entry.procedure_type != "stomach":
                 raise DashboardError("Sydney 등급은 위 검체에만 입력합니다.", 422)
-            site = self._text(site_summary, "검사위치", 80, required=entry.kind == "BIOPSY")
+            site = self._text(site_summary, "부위", 80, required=entry.kind == "BIOPSY")
             now = self._clock.now()
             self._write(updated=[replace_entry(
                 entry, now, report_ref=ref, reported_on=now.astimezone(KST).date(), findings=findings,
                 result_code=result_code, sydney=tuple(sydney.items()), site=site or entry.site, review_codes=())])
 
-    def _decision(self, entry: LedgerEntry, mode: str, due_date: date | None, reason: str, now: datetime):
+    def _decision(self, entry: LedgerEntry, mode: str, due_date: date | None, reason: str, now: datetime,
+                  actor: str | None):
         if self._stage(entry) != "DOCTOR_PENDING":
             raise DashboardError("결과 입력 후 원장 지시를 기록해 주세요.")
         if mode == "required":
@@ -481,13 +512,17 @@ class ManualDashboardService:
         else:
             raise DashboardError("재검 여부를 선택해 주세요.", 422)
         # 재검 간격을 추천하거나 계산하지 않고 입력 날짜만 보관한다.
-        return replace_entry(entry, now, decided_at=now, followup_due=due_date, no_followup_reason=clean_reason)
+        return replace_entry(entry, now, decided_at=now, decided_by=actor, followup_due=due_date,
+                             no_followup_reason=clean_reason)
 
-    def decide(self, entry_id: UUID, mode: str, due_date: date | None = None, reason: str = "") -> None:
+    def decide(self, entry_id: UUID, mode: str, due_date: date | None = None, reason: str = "",
+               actor: str | None = None) -> None:
+        """actor는 기록한 계정 이름이다(원장 본인 또는 대리 입력자)."""
         with self._lock:
-            self._write(updated=[self._decision(self._get(entry_id), mode, due_date, reason, self._clock.now())])
+            self._write(updated=[self._decision(self._get(entry_id), mode, due_date, reason, self._clock.now(),
+                                                actor)])
 
-    def bulk_not_required(self, entry_ids: list[UUID], reason: str) -> int:
+    def bulk_not_required(self, entry_ids: list[UUID], reason: str, actor: str | None = None) -> int:
         """원장이 고른 여러 건에 같은 '재검 불필요' 지시를 한 번에 기록한다. 하나라도 안 되면 전부 취소."""
         with self._lock:
             unique = list(dict.fromkeys(entry_ids))
@@ -497,18 +532,19 @@ class ManualDashboardService:
             if any(i not in stored for i in unique):
                 raise DashboardError("장부 항목을 찾을 수 없습니다.", 404)
             now = self._clock.now()
-            changes = [self._decision(stored[i], "not_required", None, reason, now) for i in unique]
+            changes = [self._decision(stored[i], "not_required", None, reason, now, actor) for i in unique]
             self._write(updated=changes)
             return len(changes)
 
-    def complete_followup(self, entry_id: UUID, done_on: date | None) -> None:
+    def complete_followup(self, entry_id: UUID, done_on: date | None, actor: str | None = None) -> None:
         with self._lock:
             entry = self._get(entry_id)
             if self._stage(entry) != "FOLLOWUP":
                 raise DashboardError("재검 예정 항목에서 기록해 주세요.")
             if done_on is None or done_on > self._today():
                 raise DashboardError("재검을 시행한 날짜(오늘 이전)를 입력해 주세요.", 422)
-            self._write(updated=[replace_entry(entry, self._clock.now(), followup_done_on=done_on)])
+            self._write(updated=[replace_entry(entry, self._clock.now(), followup_done_on=done_on,
+                                               followup_done_by=actor)])
 
     # ---------- 엑셀 가져오기·대조
 
@@ -700,6 +736,77 @@ class ManualDashboardService:
             self._write(export=record)
             return record, [e.chart_no for e in rows]
 
+    # ---------- 종이 대장 대조 (A15)
+
+    def _paper_window(self, start: date | None, end: date | None) -> tuple[date, date]:
+        today = self._today()
+        start, end = start or today, end or start or today
+        if end < start:
+            raise DashboardError("기간의 끝 날짜가 시작 날짜보다 앞입니다.", 422)
+        if (end - start).days > DUE_RANGE_MAX_DAYS:
+            raise DashboardError("기간은 2년 이내로 지정해 주세요.", 422)
+        return start, end
+
+    def paper_rows(self, form: str, start: date | None = None, end: date | None = None) -> dict:
+        """종이 대장과 같은 열 순서의 행. ①은 내시경 1회(조직검사+RUT)를 한 줄로 묶는다. 날짜는 시행날짜 기준."""
+        if form not in PAPER_FORMS:
+            raise DashboardError("알 수 없는 대장입니다.", 422)
+        start, end = self._paper_window(start, end)
+        entries = sorted((e for e in self._store.entries() if start <= e.exam_date <= end),
+                         key=lambda e: (e.exam_date, e.created_at, e.chart_no))
+        if form == "specimen":
+            grouped: dict[tuple, dict] = {}
+            for e in entries:
+                if e.kind not in ("BIOPSY", "CLO"):
+                    continue
+                row = grouped.setdefault((e.exam_date, e.chart_no, e.procedure_type or "stomach"), {
+                    "exam_date": e.exam_date, "chart_no": e.chart_no, "name": e.patient_name,
+                    "display_name": e.display_name, "procedure": e.procedure_type or "stomach",
+                    "biopsy": None, "rut": None})
+                row["biopsy" if e.kind == "BIOPSY" else "rut"] = e
+            rows = []
+            for row in grouped.values():
+                b, r = row["biopsy"], row["rut"]
+                row["biopsy_text"] = "N" if b is None else " · ".join(
+                    part for part in ("Y", b.site, f"{b.specimen_count}병" if b.specimen_count else "") if part)
+                row["rut_done"] = "Y" if r else "N"
+                row["rut_result"] = (r.result_code or "판정 전") if r else ""
+                rows.append(row)
+        else:
+            rows = []
+            for e in entries:
+                if e.kind != "BIOPSY":
+                    continue
+                sydney = self._codebook.format_sydney(dict(e.sydney)) if e.sydney else ""
+                rows.append({
+                    "exam_date": e.exam_date, "report_ref": e.report_ref, "chart_no": e.chart_no,
+                    "name": e.patient_name, "display_name": e.display_name,
+                    "sex_age": format_sex_age(e.sex, e.age), "site": e.site, "registered_by": e.registered_by,
+                    "entrusted_on": e.entrusted_on, "handed_by": e.handed_by, "received_by": e.received_by,
+                    "reported_on": e.reported_on,
+                    "result": " ".join(part for part in (e.result_notation, sydney) if part)})
+        return {"form": form, "title": PAPER_FORMS[form]["title"], "headers": PAPER_FORMS[form]["headers"],
+                "rows": rows, "start": start, "end": end}
+
+    def export_paper(self, form: str, start: date | None = None, end: date | None = None) -> tuple[ExportRecord, list[str]]:
+        """종이 대장과 같은 양식으로 지정 폴더에 저장한다. (기록, 차트번호들)"""
+        with self._lock:
+            folder = self._export_folder()
+            data = self.paper_rows(form, start, end)
+            if not data["rows"]:
+                raise DashboardError("이 기간에 대조할 기록이 없습니다.", 422)
+            now = self._clock.now()
+            workbook = build_paper_workbook(form, data["rows"], data["start"], data["end"], now.astimezone(KST))
+            name = (f"{PAPER_FORMS[form]['file_prefix']}_{data['start']:%Y%m%d}-{data['end']:%Y%m%d}"
+                    f"_{now.astimezone(KST):%H%M%S}.xlsx")
+            try:
+                save_new_workbook(workbook, folder / name)
+            except FileExistsError:
+                raise DashboardError("같은 이름의 파일이 있습니다. 잠시 뒤 다시 출력해 주세요.", 409) from None
+            record = ExportRecord(uuid4(), now, name, len(data["rows"]))
+            self._write(export=record)
+            return record, [row["chart_no"] for row in data["rows"]]
+
     # ---------- 시연 초기화
 
     def reset(self) -> None:
@@ -754,6 +861,15 @@ class ManualDashboardService:
                 seed.append(entry)
             self._store.replace_all(seed)
             self._preview = None
+
+
+def parse_sex_age(value: str) -> tuple[str, str]:
+    """'M/65' → ('M', '65'). 빈 값은 ('', ''). 형식이 다르면 추측하지 않고 거부한다."""
+    match = SEX_AGE.match(value or "")
+    if not match:
+        raise DashboardError("성별/나이는 M/65, F/56처럼 입력해 주세요.", 422)
+    sex = {"m": "M", "f": "F", "남": "M", "여": "F"}.get((match.group(1) or "").lower(), "")
+    return sex, match.group(2) or ""
 
 
 def form_date(value: str) -> date | None:

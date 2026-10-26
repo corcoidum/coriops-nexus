@@ -53,7 +53,9 @@ def block_outbound_sockets(allowed_hosts: frozenset[str] = frozenset(), allowed_
     socket.socketpair = scoped_socketpair(socket.socketpair)
 
     def guard(event: str, args: tuple) -> None:
-        if event == "socket.getaddrinfo" and args[0] in allowed_hosts and args[1] == allowed_port:
+        # psycopg는 DB 이름을 포트 문자열('5432')로 조회하므로 숫자와 문자열을 같게 본다.
+        if (event == "socket.getaddrinfo" and args[0] in allowed_hosts and allowed_port is not None
+                and str(args[1]) == str(allowed_port)):
             return
         if event == "socket.connect":
             address = args[1]

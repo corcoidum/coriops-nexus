@@ -92,6 +92,26 @@ def test_db_allowance_only_opens_the_database_address():
     assert result.returncode == 0, result.stderr
 
 
+def test_db_hostname_lookup_is_allowed_with_a_string_port():
+    """psycopg는 DB 이름(예: Compose의 ledger-db)을 포트 문자열 '5432'로 조회한다. 숫자 포트와 같게 본다."""
+    script = (
+        "import socket\n"
+        "from app.demo_server import block_outbound_sockets\n"
+        "block_outbound_sockets(frozenset({'localhost'}), 9)\n"
+        "socket.getaddrinfo('localhost', '9', type=socket.SOCK_STREAM)\n"
+        "socket.getaddrinfo('localhost', 9, type=socket.SOCK_STREAM)\n"
+        "for host, port in [('localhost', '10'), ('example.invalid', '9')]:\n"
+        "    try:\n"
+        "        socket.getaddrinfo(host, port)\n"
+        "    except PermissionError as error:\n"
+        "        assert str(error) == 'DEMO_OUTBOUND_NETWORK_DISABLED'\n"
+        "    else:\n"
+        "        raise AssertionError('DB 외 이름 조회가 열렸습니다')\n"
+    )
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
 def test_demo_compose_needs_no_secrets():
     """메모리 시연·시험 파일에는 DB 장부의 필수 비밀값이 섞이지 않는다(.env 없이 실행)."""
     with open("docker-compose.prototype.yml", encoding="utf-8") as source:
@@ -106,6 +126,8 @@ def test_ledger_profile_keeps_db_internal_and_mounts_only_the_export_folder():
     assert ledger["ports"] == ["127.0.0.1:8766:8000"]
     assert ledger["command"] == ["python", "-m", "app.ledger_server"]
     assert ledger["read_only"] is True
+    # 읽기 전용 컨테이너에서도 엑셀 출력이 되도록 임시 폴더는 메모리(tmpfs)로만 둔다.
+    assert [t.split(":")[0] for t in ledger["tmpfs"]] == ["/tmp"]
     assert [v.split(":")[-1] for v in ledger["volumes"]] == ["/exports"]
     assert ledger["environment"]["CORIOPS_EXPORT_DIR"] == "/exports"
     assert "ports" not in database

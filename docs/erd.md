@@ -1,6 +1,6 @@
 # ERD
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `f9ad6cd3e45b76acf54899bf86d16f2988145caab91a03917e52fec335b31f19`
+> 원천: `ontology/coriops.yaml` · SHA-256 `c35b8a3d18f2da87859f3ab5770c10c19a83fd7f0dc120a01d5a14801ea67f71`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 공통 필드(id·created_at·updated_at)는 모든 테이블에 있다. 관계는 각 클래스의 `references` 필드에서 만든다. JSONB 안에 들어가는 구성 요소(ReportFinding·SydneyGrading)와 config 등록값(ResultCode)은 그림에서 뺐다.
@@ -86,7 +86,6 @@ erDiagram
         timestamptz updated_at
         string chart_no
         string name
-        enum sex
     }
     Exam {
         uuid id PK
@@ -97,6 +96,7 @@ erDiagram
         date exam_date
         enum procedure_type
         integer age
+        enum sex
         string report_ref
         enum source
         uuid import_batch_id FK
@@ -238,12 +238,12 @@ erDiagram
 | AuthSession | `auth_sessions` | 구현됨 |
 | AccessLog | `access_logs` | 구현됨 |
 | AccessLogReview | `access_log_reviews` | 구현됨 |
-| Patient | `patients` | 예정(Stage A-2) |
-| Exam | `exams` | 예정(Stage A-2) |
-| Specimen | `specimens` | 예정(Stage A-2) |
-| ExamResult | `exam_results` | 예정(Stage A-2) |
-| DoctorReview | `doctor_reviews` | 예정(Stage A-2) |
-| FollowUp | `followups` | 예정(Stage A-2) |
+| Patient | `patients` | 구현됨 |
+| Exam | `exams` | 구현됨 |
+| Specimen | `specimens` | 구현됨 |
+| ExamResult | `exam_results` | 구현됨 |
+| DoctorReview | `doctor_reviews` | 구현됨 |
+| FollowUp | `followups` | 구현됨 |
 | Handoff | `ledger_handoffs` | 구현됨 |
 | ImportBatch | `ledger_import_batches` | 구현됨 |
 | LedgerExport | `ledger_exports` | 구현됨 |
