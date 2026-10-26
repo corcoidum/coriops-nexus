@@ -23,6 +23,7 @@ import yaml
 
 from app.kernel.calendar import ClinicCalendar
 from app.kernel.clock import Clock, SystemClock
+from app.kernel.tasks import MemoryTaskStore, RuleBook, TaskEngine, TaskStore
 from app.kernel.web import UserError
 
 from .excel_io import (
@@ -35,6 +36,7 @@ from .ledger_model import (
     KINDS, KST, PROCEDURE_LABELS, STAGE_ACTIONS, STAGE_LABELS, ExportRecord, Handoff, ImportBatch, LedgerEntry,
 )
 from .result_notation import NotationError, ResultCodeBook
+from .rules import ledger_candidates
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[3] / "config"
@@ -64,13 +66,15 @@ class DashboardPolicy:
     followup_window_days: int
     handoff_defaults: dict[str, str]
     staff_name_max_length: int
+    rut_result_delay_business_days: int = 1
 
     @classmethod
     def load(cls, path: Path | None = None) -> DashboardPolicy:
         with open(path or CONFIG_DIR / "manual_dashboard.yaml", encoding="utf-8") as source:
             raw = yaml.safe_load(source)
         return cls(int(raw["result_delay_business_days"]), int(raw["followup_window_days"]),
-                   dict(raw["handoff_defaults"]), int(raw["staff_name_max_length"]))
+                   dict(raw["handoff_defaults"]), int(raw["staff_name_max_length"]),
+                   int(raw["rut_result_delay_business_days"]))
 
 
 @dataclass(frozen=True)
@@ -119,7 +123,8 @@ class ManualDashboardService:
     def __init__(self, clock: Clock | None = None, calendar: ClinicCalendar | None = None,
                  policy: DashboardPolicy | None = None, codebook: ResultCodeBook | None = None,
                  store: LedgerStore | None = None, config: LedgerAppConfig | None = None,
-                 security: SecurityPolicy | None = None, export_dir: str | Path | None = None):
+                 security: SecurityPolicy | None = None, export_dir: str | Path | None = None,
+                 task_store: TaskStore | None = None, rulebook: RuleBook | None = None):
         self._clock = clock or SystemClock()
         self._calendar = calendar or ClinicCalendar.load()
         self._policy = policy or DashboardPolicy.load()
@@ -133,6 +138,9 @@ class ManualDashboardService:
         self._lock = RLock()
         self._preview: _Preview | None = None
         self._store = store if store is not None else MemoryStore()
+        # 규칙·할 일(Stage B). 저장은 커널 실행기가, 후보 계산은 이 모듈의 rules.py가 맡는다.
+        self._tasks = TaskEngine(task_store or MemoryTaskStore(), rulebook or RuleBook.load(),
+                                 self._task_candidates, self._clock)
         if store is None:
             self.reset()
 
@@ -143,6 +151,15 @@ class ManualDashboardService:
     @property
     def max_upload_bytes(self) -> int:
         return self._security.max_upload_bytes
+
+    @property
+    def tasks(self) -> TaskEngine:
+        return self._tasks
+
+    def _task_candidates(self, now: datetime) -> list:
+        entries = self._store.entries()
+        stages = {e.id: self._stage(e) for e in entries}
+        return ledger_candidates(entries, stages, now, self._tasks.book.specs, self._calendar, self._handoff_kinds)
 
     @property
     def engine(self):
@@ -197,6 +214,10 @@ class ManualDashboardService:
             self._store.write(**changes)
         except ConcurrentUpdate:
             raise DashboardError("다른 화면에서 먼저 바뀌었거나 이미 있는 번호입니다. 새로 고친 뒤 다시 입력해 주세요.", 409) from None
+        # 바뀐 검사의 할 일만 바로 열고 닫는다. 출력 기록처럼 검사가 바뀌지 않으면 돌리지 않는다.
+        subjects = {e.id for e in (*changes.get("inserted", ()), *changes.get("updated", ()))}
+        if subjects:
+            self._tasks.run(subjects)
 
     @staticmethod
     def _text(value: str, label: str, maximum: int, required: bool = True) -> str:
@@ -219,7 +240,9 @@ class ManualDashboardService:
             return Alert(pickup["text"], pickup["level"])
         if stage == "RESULT_PENDING":
             days = self._calendar.business_days_between(entry.waiting_since, today)
-            delayed = days > self._policy.result_delay_business_days
+            limit = (self._policy.rut_result_delay_business_days if entry.kind == "CLO"
+                     else self._policy.result_delay_business_days)
+            delayed = days > limit
             label = "위탁 후" if entry.entrusted_on else "검사 후"
             return Alert(f"{label} {days}진료일" + (" · 지연" if delayed else ""), "danger" if delayed else "normal")
         positive = self._config.is_positive(entry.kind, entry.result_code)
@@ -325,6 +348,7 @@ class ManualDashboardService:
                  kind: str = "ALL", page: int = 1, due: str = "", due_from: date | None = None,
                  due_to: date | None = None, ledger: str = "tissue", positive: bool = False) -> dict:
         with self._lock:
+            self._tasks.run_if_stale()
             kinds = self._ledger_kinds(ledger)
             meta = self._config.ledgers[ledger]
             followup = meta.get("followup", True)
@@ -921,6 +945,9 @@ class ManualDashboardService:
                 seed.append(entry)
             self._store.replace_all(seed)
             self._preview = None
+            if isinstance(self._tasks.store, MemoryTaskStore):
+                self._tasks.store.clear()
+            self._tasks.run()
 
 
 def parse_sex_age(value: str) -> tuple[str, str]:

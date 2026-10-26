@@ -1,63 +1,46 @@
-status: DESIGN_USER_CONFIRMED_TRIGGER_SPLIT
+version: '0.3'
+# Stage B 규칙(A17). 상태·기한·누락만 본다. 결과 코드의 의미·중요도로 판단하지 않는다(Q19).
+# 이전 검토안 R01~R08(환자 안내 포함)은 git 이력과 docs/archive/ontology-0.1-design.2.yaml에 남아 있다(D11, A12).
+# 담당 역할은 Q01 권한표와 같은 [가정]이다(A17에서 사용자 확인).
 engine:
-  interval_minutes: 30
-  dedupe_template: '{rule_id}:{subject_type}:{subject_id}:{cycle_id}'
+  # 화면을 열 때 마지막 전체 실행에서 이 시간이 지났으면 전체를 다시 돈다. 업무 기록 직후에는 해당 검사만 바로 돈다.
+  full_run_interval_minutes: 5
+  dedupe_template: '{rule_id}:{subject_type}:{subject_id}:{anchor}'
   overdue_comparison: now_gt_due_at
   dashboard_done_window_days: 7
 rules:
-  PATH.R01:
-    name: SPECIMEN_NOT_SHIPPED
-    trigger: collection_day_closing_reached
-    title: 검체 발송 확인
+  PATH.L01:
+    name: HANDOFF_MISSED
+    title: 검체 인계 확인
+    # 시행날짜의 수탁기관 수령 시각이 지났는데 인계 기록이 없음(조직검사·Stool 당일 인수·당일 인계, A16)
     assignee_role: NURSE
     priority: HIGH
-    params: {due: collection_day_closing}
-  PATH.R02:
-    name: RESULT_OVERDUE
-    trigger: shipped_plus_calendar_days_reached_and_coverage_incomplete
-    title: 병리결과 확인(수탁기관)
+    params: {}
+  PATH.L02:
+    name: RESULT_DELAYED
+    title: 결과 회신 확인
+    # 위탁일(인계 없는 종류는 시행날짜) 다음날부터 센 진료일이 기준을 넘김. RUT는 원내 판정이라 다음 진료일까지(A17)
     assignee_role: ADMIN
     priority: NORMAL
-    params: {calendar_days: 7}
-  PATH.R03:
-    name: REVIEW_PENDING
-    trigger: complete_result_received
-    title: 원장 결과 확인 요청
+    params: {business_days: 2, rut_business_days: 1}
+  PATH.L03:
+    name: DOCTOR_DECISION_PENDING
+    title: 원장 지시 확인
+    # 결과 입력 후 원장 지시가 없음. 과거 엑셀에서 가져온 건은 할 일로 만들지 않고 화면 배지로만 둔다(A17)
     assignee_role: DOCTOR
     priority: NORMAL
-    params: {business_days: 1}
-  PATH.R04:
-    name: NOTIFY_PENDING
-    trigger: reviewed_call_or_next_visit
-    title: 환자 결과 안내
-    assignee_role: ADMIN
-    priority_by_urgency: {ROUTINE: NORMAL, PRIORITY: HIGH, URGENT: URGENT}
-    params: {business_days: 2, urgent_business_days: 0}
-  PATH.R05:
-    name: NOTIFY_FAILED_REPEATEDLY
-    trigger: failure_threshold_reached_in_current_cycle
-    title: 안내 방법 변경 검토
-    assignee_role: ADMIN
-    priority: HIGH
-    params: {failed_attempts: 3, failure_outcomes: [NO_ANSWER, WRONG_NUMBER, REFUSED]}
-  PATH.R06:
-    name: FOLLOWUP_MISSING
-    trigger: notified_or_notification_waived_and_followup_required
-    title: F/U 계획 등록
+    params: {business_days: 1, skip_sources: [IMPORT]}
+  PATH.L04:
+    name: FOLLOWUP_WITHIN_WINDOW
+    title: 재검 예정 확인
+    # 원장이 정한 재검일이 기간 안으로 들어옴. 사람이 [확인 완료]로 닫는다(예: EMR 예약 확인)
     assignee_role: ADMIN
     priority: NORMAL
-    params: {business_days: 2}
-  PATH.R07:
-    name: FOLLOWUP_DUE_UNBOOKED
-    trigger: planned_inside_due_window
-    title: 재검 예약 안내
-    assignee_role: ADMIN
-    priority: NORMAL
-    params: {calendar_days: 30}
-  PATH.R08:
-    name: FOLLOWUP_OVERDUE
-    trigger: due_date_passed_and_incomplete
-    title: 재검 기한 경과
+    params: {window_days: 30}
+  PATH.L05:
+    name: FOLLOWUP_DUE
+    title: 재검일 도래 확인
+    # 재검일이 오늘이거나 지났는데 재검 완료 기록이 없음
     assignee_role: ADMIN
     priority: HIGH
-    params: {calendar_days: 0}
+    params: {}

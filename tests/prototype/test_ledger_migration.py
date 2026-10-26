@@ -24,6 +24,7 @@ from ledger_helpers import FixedClock
 
 ROOT = Path(__file__).resolve().parents[2]
 BEFORE = "0002_auth_access_logs"
+SPLIT = "0003_split_ledger_entries"
 NOW = datetime(2026, 11, 5, 1, 0, tzinfo=timezone.utc)
 
 
@@ -128,7 +129,11 @@ def test_upgrade_downgrade_upgrade_keeps_every_value(engine):
     _insert_legacy(engine, ledger)
     original_rows = _legacy_rows(engine)
 
+    command.upgrade(alembic_config(), SPLIT)
+    # 0003은 이전 시점 사본을 남기고, 0004(Stage B)가 지운다(이름이 든 사본을 보관기간 관리 밖에 두지 않음).
+    assert "ledger_entries_legacy" in inspect(engine).get_table_names()
     command.upgrade(alembic_config(), "head")
+    assert "ledger_entries_legacy" not in inspect(engine).get_table_names()
     assert _by_id(PostgresStore(engine).entries()) == _by_id(ledger)
     with engine.connect() as connection:
         patients = connection.execute(text("SELECT count(*) FROM patients")).scalar_one()
@@ -136,7 +141,6 @@ def test_upgrade_downgrade_upgrade_keeps_every_value(engine):
                   for table in ("exams", "specimens", "exam_results", "doctor_reviews", "followups")}
     assert patients == 8  # T-0001은 검사 2건이지만 환자 1명
     assert stages == {"exams": 9, "specimens": 9, "exam_results": 6, "doctor_reviews": 3, "followups": 2}
-    assert "ledger_entries_legacy" in inspect(engine).get_table_names()
 
     command.downgrade(alembic_config(), BEFORE)
     assert _legacy_rows(engine) == original_rows

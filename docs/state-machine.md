@@ -1,6 +1,6 @@
 # Exam 단계
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `c35b8a3d18f2da87859f3ab5770c10c19a83fd7f0dc120a01d5a14801ea67f71`
+> 원천: `ontology/coriops.yaml` · SHA-256 `0405fd8fd042483a7c9f365a60ba6ed3f3a1b2553765455564d760236bdd7ed6`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 단계는 DB에 저장하지 않는다. 연결된 기록(인계·결과·원장 지시·재검 계획)이 있는지로 매번 계산하므로, 상태 값과 실제 기록이 어긋나지 않는다. 화면 버튼은 아래 전이만 허용하고 권한은 `config/security.yaml`을 따른다.
