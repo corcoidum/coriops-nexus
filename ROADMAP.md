@@ -36,8 +36,8 @@
 | 1 Ontology | Entity·관계·상태·FHIR | ✅ v0.2 | `ontology/coriops.yaml` v0.2 21클래스(구현 18·예정 3)·`scripts/gen_docs.py`·YAML=코드=DB 일치 시험 |
 | 2 PostgreSQL ERD | 테이블·FK·제약·마이그레이션·감사 필드 | ✅ | Alembic 0001~0003. `patients`·`exams`·`specimens`·`exam_results`·`doctor_reviews`·`followups` |
 | 3 Endoscopy + Specimen MVP | 접수 → 인계 → 결과 → 원장 지시 → 재검 | ✅ | DB 저장 장부, 3자 인계·병 수 대조, 엑셀 가져오기·대조·출력, 종이 대장 ①·② 대조·같은 양식 출력(A15) |
-| 4 Rule Engine | 규칙이 누락을 찾아냄 | 🔴 | 지연·도래는 화면에서 즉석 계산. `config/rules.yaml`은 설계만 |
-| 5 Task Engine | 담당·상태·출처가 있는 Task | 🔴 | Task 테이블 없음 |
+| 4 Rule Engine | 규칙이 누락을 찾아냄 | ✅ | L01~L05(`config/rules.yaml` v0.3), 실행 기록, 중복 방지·자동 해소(B-1) |
+| 5 Task Engine | 담당·상태·출처가 있는 Task | 🟡 | `tasks` 저장·닫기(B-1). "오늘 할 일" 화면은 B-2 |
 | 6 Lab Integration | 씨젠 결과 → Observation | ⚪ | — |
 | 7 Screening F/U | 검진 결과 후속관리 | ⚪ | — |
 | 8 Recall Engine | 정기 재검·주사·백신 | 🟡 | 내시경 재검만: 재검 도래·기간 필터·대상자 출력 |
@@ -81,6 +81,9 @@
 - **완료 조건:** 기존 화면·시험이 그대로 통과하고, 이전 전후 건수·결과·재검 일정이 일치하며, upgrade·downgrade·upgrade가 된다
 
 ### Stage B — Rule + Task Engine (초안 Phase 4·5)
+
+- **B-1 ✅** 규칙 L01~L05·실행기·`rules`·`rule_runs`·`tasks`(Alembic 0004), `ledger_entries_legacy` 삭제(A17). Stool 당일 인계(A16)
+- **B-2** "오늘 할 일" 화면(오늘·기한 지남·대기·완료, 내 역할), 확인 완료·해당 없음, 대시보드 숫자 연결
 
 - 규칙이 Task를 **DB에 저장**한다. 같은 대상·같은 회차는 한 번만 저장하고(중복 방지), 실행 이력을 남긴다
 - 첫 규칙: 인계 누락(수령 시각 경과), 결과 지연(2진료일 초과), 원장 지시 대기, 재검 30일 이내, 재검 도래·경과

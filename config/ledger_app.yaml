@@ -6,7 +6,7 @@ kinds:
   BIOPSY: {label: 조직검사, sheet_names: [Biopsy, 조직검체장부], handoff: true, result_format: codes}
   # CLO = 종이 검체 관리 장부의 RUT. 원내 판정이라 수탁기관 인계가 없다(A15에서 확인).
   CLO: {label: RUT(CLO), sheet_names: [CLO], handoff: false, result_format: short}
-  # [가정] Stool은 수탁기관으로 보낸다. 실제와 다르면 handoff를 false로 바꾼다.
+  # Stool은 씨젠에 당일 인수·당일 인계한다(A16에서 확인).
   STOOL: {label: Stool, sheet_names: [Stool], handoff: true, result_format: short}
 # 엑셀 헤더 → 저장 필드. 세 시트가 같은 사전을 쓴다. 헤더 이름이 다르면 여기에 별칭을 추가한다.
 fields:

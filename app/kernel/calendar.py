@@ -59,6 +59,22 @@ class ClinicCalendar:
             count += self.is_clinic_day(day)
         return count
 
+    def add_business_days(self, start: date, days: int) -> date:
+        """start 다음날부터 세어 days번째 진료일. days가 0이면 start."""
+        day, remaining = start, days
+        while remaining > 0:
+            day += timedelta(days=1)
+            remaining -= self.is_clinic_day(day)
+        return day
+
+    def next_pickup(self, day: date) -> date | None:
+        """day부터 가장 가까운 수탁기관 수령일(그날 포함). 2주 안에 없으면 None."""
+        for offset in range(15):
+            candidate = day + timedelta(days=offset)
+            if self.pickup_time(candidate) is not None:
+                return candidate
+        return None
+
     def subtract_business_days(self, end: date, days: int) -> date:
         """end에서 진료일 days개를 거슬러 간 진료일. 시연 seed에서 사용한다."""
         day, remaining = end, days
