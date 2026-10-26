@@ -1573,3 +1573,49 @@ input:focus,select:focus {
   padding:8px 10px;
   margin:0 0 14px;
 }
+
+/* 혈액 결과 입력 */
+.lab-rows {
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:10px 12px 12px;
+  margin:12px 0;
+}
+
+.lab-rows legend {
+  font-size:12px;
+  font-weight:700;
+  padding:0 4px;
+}
+
+.lab-row {
+  display:grid;
+  grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,.8fr);
+  gap:6px;
+  margin-bottom:6px;
+  align-items:center;
+}
+
+.check-line {
+  display:flex;
+  gap:6px;
+  align-items:center;
+  font-size:12px;
+  margin:8px 0 4px;
+  font-weight:400;
+}
+
+.critical-mark {
+  border:1px solid #f3c7c2;
+  background:#fff8f7;
+  border-radius:8px;
+  padding:8px 12px;
+  margin-bottom:14px;
+}
+
+.critical-mark summary {
+  cursor:pointer;
+  font-size:12px;
+  font-weight:700;
+  color:#b33a31;
+}

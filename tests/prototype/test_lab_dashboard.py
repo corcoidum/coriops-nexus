@@ -188,3 +188,78 @@ def test_lab_routes_do_not_touch_pathology_module():
     source = Path(__file__).resolve().parents[2] / "app/modules/screening_lab"
     for path in source.glob("*.py"):
         assert "endoscopy_pathology" not in path.read_text(encoding="utf-8")
+
+
+# ---------- 결과 직접 입력(B14·B16)·관리자 위급치 표기(B15)
+
+def result_form(**changes):
+    data = {"report_ref": "2026.11.04-0000001", "report_date": "2026-11-05", "entered_by": "테스트직원",
+            "item_name": ["AST", "GGT"], "item_value": ["52", "70"], "item_flag": ["H", "H"],
+            "qual_name": ["HBsAg", "Anti-HBs"], "qual_value": ["Neg", "Pos"]}
+    data.update(changes)
+    return data
+
+
+def test_pending_case_shows_entry_form_with_hepatitis_choices(client, app):
+    case = first_in(app, "RESULT_PENDING")
+    page = client.get(f"/lab?selected_id={case.id}").text
+    assert f'action="/lab/cases/{case.id}/result"' in page
+    assert 'value="HBsAg"' in page and 'value="Anti-HBs"' in page and 'value="Anti-HCV"' not in page
+
+
+def test_entered_result_lists_flagged_and_hepatitis_then_waits_for_check(client, app):
+    case = first_in(app, "RESULT_PENDING")
+    response = client.post(f"/lab/cases/{case.id}/result",
+                           data={"csrf_token": app.state.csrf_token, **result_form()}, follow_redirects=False)
+    assert response.status_code == 303
+    entered = next(c for c in lab(app).snapshot()["cases"] if c.id == case.id)
+    assert entered.stage == "CHECK_PENDING" and entered.result_entered_by == "테스트직원"
+    assert lab(app).result_text(entered) == "AST 52 H, GGT 70 H, HBsAg Neg, Anti-HBs Pos"
+    assert entered.record.report_ref == "2026.11.04-0000001"
+
+
+def test_no_flagged_items_is_recorded_as_normal(client, app):
+    case = first_in(app, "RESULT_PENDING")
+    data = result_form(item_name=[""], item_value=[""], item_flag=[""], no_flagged="1")
+    assert post(client, app, f"/lab/cases/{case.id}/result", **data).status_code == 303
+    entered = next(c for c in lab(app).snapshot()["cases"] if c.id == case.id)
+    assert lab(app).result_text(entered) == "정상, HBsAg Neg, Anti-HBs Pos"
+
+
+@pytest.mark.parametrize("changes", [
+    {"item_name": [""], "item_value": [""], "item_flag": [""]},          # H/L도 '없음' 확인도 없음
+    {"no_flagged": "1"},                                                   # 항목과 '없음'을 함께 보냄
+    {"item_name": ["SGOT"], "item_value": ["52"], "item_flag": ["H"]},    # 목록 밖 항목
+    {"item_name": ["AST"], "item_value": ["52"], "item_flag": [""]},      # 판정 누락
+    {"item_name": ["AST", "AST"], "item_value": ["52", "60"], "item_flag": ["H", "H"]},
+    {"qual_value": ["Neg", ""]},                                           # 간염 선택 누락
+    {"report_date": "2099-01-01"},
+    {"report_ref": " "},
+])
+def test_invalid_result_entry_changes_nothing(client, app, changes):
+    case = first_in(app, "RESULT_PENDING")
+    assert post(client, app, f"/lab/cases/{case.id}/result", **result_form(**changes)).status_code == 422
+    assert first_in(app, "RESULT_PENDING").id == case.id
+
+
+def test_manager_marks_critical_then_report_is_required(client, app):
+    case = next(c for c in lab(app).snapshot(stage="CHECK_PENDING")["cases"] if any(i.flag for i in c.record.items))
+    flagged = next(i.name for i in case.record.items if i.flag)
+    page = client.get(f"/lab?selected_id={case.id}").text
+    assert "위급치 표기 (관리자 확인 후)" in page
+    response = post(client, app, f"/lab/cases/{case.id}/mark-critical", critical_items=[flagged],
+                    marked_by="테스트관리자")
+    assert response.status_code == 303
+    marked = next(c for c in lab(app).snapshot()["cases"] if c.id == case.id)
+    assert marked.stage == "CRITICAL_PENDING" and marked.critical_marked_by == "테스트관리자"
+    assert lab(app).critical_pending_count() == 3
+    assert "관리자 위급치 표기" in client.get(f"/lab?selected_id={case.id}").text
+
+
+def test_critical_can_only_be_chosen_from_flagged_items(client, app):
+    case = next(c for c in lab(app).snapshot(stage="CHECK_PENDING")["cases"] if any(i.flag for i in c.record.items))
+    unflagged = next((i.name for i in case.record.items if not i.flag), "Hb")
+    for items in ([], [unflagged]):
+        assert post(client, app, f"/lab/cases/{case.id}/mark-critical", critical_items=items,
+                    marked_by="테스트관리자").status_code == 422
+    assert lab(app).critical_pending_count() == 2

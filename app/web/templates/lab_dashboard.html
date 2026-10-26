@@ -41,7 +41,7 @@
           </tr>
         {% else %}<tr><td colspan="5" class="empty-state">조건에 맞는 업무가 없습니다.</td></tr>{% endfor %}
         </tbody></table></div>
-        <div class="table-footer"><span>{{ cases|length }}건 · 전체 {{ total }}건</span><span>H/L·위급치는 씨젠 표시 그대로이며 해석은 원장이 합니다.</span></div>
+        <div class="table-footer"><span>{{ cases|length }}건 · 전체 {{ total }}건</span><span>H/L은 결과지 판정 그대로, 위급치는 관리자 표기. 해석은 원장이 합니다.</span></div>
       </section>
 
       <section class="panel detail" aria-labelledby="detail-title">
@@ -56,9 +56,35 @@
             <div><dt>결과</dt><dd>{% if results[selected.id] %}<span class="finding-text">{{ results[selected.id] }}</span>{% else %}미수신{% endif %}</dd></div>
           </dl>
           {% if sel == 'RESULT_PENDING' %}
-          <p class="form-intro">씨젠에 결과가 공개되면 결과 파일 가져오기(다음 단계 L4)로 채워집니다. 지금은 기다리는 상태만 보여줍니다.</p>
+          <p class="form-intro">씨젠 결과지(PDF)를 보고 <strong>판정이 H·L인 항목만</strong> 옮겨 적습니다. 값을 판단하거나 계산하지 않습니다.</p>
+          <form action="/lab/cases/{{ selected.id }}/result" method="post" class="lab-result-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="field-row"><div><label for="report_ref">씨젠 접수번호 <span class="required">필수</span></label><input id="report_ref" name="report_ref" maxlength="30" required value="{{ r.report_ref }}" autocomplete="off"></div>
+              <div><label for="report_date">회신날짜(결과보고일) <span class="required">필수</span></label><input type="date" id="report_date" name="report_date" required max="{{ today.isoformat() }}" value="{{ today.isoformat() }}"></div></div>
+            <fieldset class="lab-rows"><legend>H·L 항목</legend>
+              {% for _ in range(entry_rows) %}
+              <div class="lab-row">
+                <label class="visually-hidden" for="item_name_{{ loop.index }}">항목 {{ loop.index }}</label>
+                <select id="item_name_{{ loop.index }}" name="item_name"><option value="">항목</option>{% for name in item_names %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</select>
+                <label class="visually-hidden" for="item_value_{{ loop.index }}">결과값 {{ loop.index }}</label>
+                <input id="item_value_{{ loop.index }}" name="item_value" maxlength="20" placeholder="결과값" autocomplete="off">
+                <label class="visually-hidden" for="item_flag_{{ loop.index }}">판정 {{ loop.index }}</label>
+                <select id="item_flag_{{ loop.index }}" name="item_flag"><option value="">판정</option>{% for flag in result_flags %}<option value="{{ flag }}">{{ flag }}</option>{% endfor %}</select>
+              </div>
+              {% endfor %}
+              <label class="check-line"><input type="checkbox" name="no_flagged" value="1"> H·L 표시된 항목 없음 (결과에 <strong>정상</strong>으로 적힘)</label>
+            </fieldset>
+            {% set quals = qualitative_for(r.exam_kinds) %}
+            {% if quals %}<fieldset class="lab-rows"><legend>간염 검사 (항목마다 선택)</legend>
+              {% for name in quals %}<div class="lab-row"><input type="hidden" name="qual_name" value="{{ name }}"><label for="qual_{{ loop.index }}">{{ name }}</label>
+                <select id="qual_{{ loop.index }}" name="qual_value" required><option value="">선택</option>{% for value in qualitative_values %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select></div>{% endfor %}
+            </fieldset>{% endif %}
+            <label for="entered_by">입력한 직원 <span class="required">필수</span></label><input id="entered_by" name="entered_by" maxlength="20" required autocomplete="off">
+            <button class="button primary full" type="submit">결과 저장 <span aria-hidden="true">→</span></button>
+          </form>
           {% elif sel == 'CRITICAL_PENDING' %}
-          <p class="alert-chip danger">씨젠 위급치 표시 · 원장 보고 필요</p>
+          <p class="alert-chip danger">관리자 위급치 표기 · 원장 보고 필요</p>
+          {% if selected.critical_marked_by %}<p class="form-intro">표기: {{ selected.critical_marked_by }} · {{ selected.critical_marked_at.astimezone(kst).strftime('%Y.%m.%d %H:%M') }}</p>{% endif %}
           <p class="form-intro">원장님께 보고한 뒤 보고한 직원을 기록합니다. 원장 지시 내용은 여기에 적지 않습니다.</p>
           <form action="/lab/cases/{{ selected.id }}/report-critical" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -68,6 +94,18 @@
           {% else %}
           {% if selected.critical_reported_at %}<div class="decision-box"><span>원장 보고</span><strong>{{ selected.critical_reported_by }}</strong><p>{{ selected.critical_reported_at.astimezone(kst).strftime('%Y.%m.%d %H:%M') }} 보고</p></div>{% endif %}
           {% if sel == 'CHECK_PENDING' %}
+          {% set flagged = selected.record.items|selectattr('flag')|list %}
+          {% if flagged and actor and actor.can('lab.critical_mark') %}
+          <details class="critical-mark"><summary>위급치 표기 (관리자 확인 후)</summary>
+            <p class="form-intro">시스템은 수치로 위급치를 고르지 않습니다. 관리자가 확인한 항목만 표기하면 원장 보고 대기로 넘어갑니다.</p>
+            <form action="/lab/cases/{{ selected.id }}/mark-critical" method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              {% for item in flagged %}<label class="check-line"><input type="checkbox" name="critical_items" value="{{ item.name }}"> {{ item.name }} {{ item.value }} {{ item.flag }}</label>{% endfor %}
+              <label for="marked_by">확인한 관리자 <span class="required">필수</span></label><input id="marked_by" name="marked_by" maxlength="20" required autocomplete="off">
+              <button class="button secondary full" type="submit">위급치로 표기</button>
+            </form>
+          </details>
+          {% endif %}
           <p class="form-intro">결과를 장부와 대조한 뒤 확인한 직원을 기록합니다.</p>
           <form action="/lab/cases/{{ selected.id }}/check" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

@@ -16,6 +16,8 @@ authentication:
     ledger.result: [ADMIN, DOCTOR]
     ledger.decide: [DOCTOR, ADMIN]   # ADMIN은 원장 지시의 대리 입력
     ledger.followup: [NURSE, ADMIN, DOCTOR]
+    # [가정] 위급치 표기는 관리자 확인 후(B15). 관리자 = ADMIN(사무장), 원장도 가능.
+    lab.critical_mark: [ADMIN, DOCTOR]
     excel.import: [ADMIN, DOCTOR]
     excel.export: [ADMIN, DOCTOR]
     privacy.logs: [PRIVACY_OFFICER]

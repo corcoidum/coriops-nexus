@@ -13,7 +13,14 @@ result_flags: [H, L]
 normal_label: 정상
 # 결과란 항목명은 원내 약칭으로 적는다(B10). 목록에 없는 이름은 그대로 적고 검토 항목을 만든다.
 # 씨젠 결과는 환자별 PDF(보험코드·검사항목·검사결과·판정·참고치)다. 보험코드 → 약칭 대응 제안은 docs/blood-ledger-plan.md(B12·B14).
-item_names: [Hb, Glu, CHOL, TG, HDL, LDL, AST, ALT, GGT, Cr]
+# AFP는 [제안] 약칭(B12)이며 확정 전이다.
+item_names: [Hb, Glu, CHOL, TG, HDL, LDL, AST, ALT, GGT, Cr, AFP]
+# 정성 검사(B16): 결과지 판정 칸이 비어 있으므로 항목마다 Neg/Pos를 골라 적는다. 분류에 따라 입력 칸이 생긴다.
+# 약칭은 [제안](B12).
+qualitative_items:
+  추가b형간염: [HBsAg, Anti-HBs]
+  추가c형간염: [Anti-HCV]
+qualitative_values: [Neg, Pos]
 columns:
   - {header: 날짜, field: received_date, kind: date, width: 12}
   - {header: 접수번호, field: report_ref, kind: text, width: 14}

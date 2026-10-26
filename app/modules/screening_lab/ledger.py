@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date
 from hashlib import sha256
 from io import BytesIO
@@ -51,6 +51,12 @@ class LabRecord:
     entrusted_date: date | None = None
     report_date: date | None = None
     items: tuple[LabItem, ...] = ()
+    # 직원이 결과를 입력했으나 H/L 항목이 하나도 없을 때(모두 정상) True. 항목이 있으면 자동으로 수신 상태다.
+    result_received: bool = False
+
+    @property
+    def received(self) -> bool:
+        return bool(self.items) or self.result_received
 
 
 @dataclass(frozen=True)
@@ -71,10 +77,23 @@ class LabLedgerPolicy:
     normal_label: str
     item_names: tuple[str, ...]
     columns: tuple[Column, ...]
+    qualitative_items: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    qualitative_values: tuple[str, ...] = ()
 
     @property
     def headers(self) -> tuple[str, ...]:
         return tuple(column.header for column in self.columns)
+
+    @property
+    def qualitative_names(self) -> frozenset[str]:
+        return frozenset(name for names in self.qualitative_items.values() for name in names)
+
+    def qualitative_for(self, exam_kinds: Iterable[str]) -> tuple[str, ...]:
+        """분류에 따라 Neg/Pos를 반드시 골라야 하는 정성 검사 항목."""
+        return tuple(name for kind in exam_kinds for name in self.qualitative_items.get(kind, ()))
+
+    def result_text(self, record: LabRecord) -> str | None:
+        return format_result(record.items, self.normal_label, self.qualitative_names, record.received)
 
 
 @dataclass(frozen=True)
@@ -118,6 +137,8 @@ def load_policy(path: Path | None = None) -> LabLedgerPolicy:
         data["normal_label"],
         tuple(data["item_names"]),
         columns,
+        {kind: tuple(names) for kind, names in (data.get("qualitative_items") or {}).items()},
+        tuple(data.get("qualitative_values") or ()),
     )
 
 
@@ -151,20 +172,22 @@ def new_workbook(policy: LabLedgerPolicy) -> Workbook:
     return workbook
 
 
-def format_result(items: Iterable[LabItem], normal_label: str) -> str | None:
-    """정상범위 항목은 빼고 '항목 값 H/L'을 쉼표로 잇는다.
+def format_result(items: Iterable[LabItem], normal_label: str, qualitative_names: frozenset[str] = frozenset(),
+                  received: bool = False) -> str | None:
+    """정상범위 항목은 빼고 '항목 값 H/L'을 쉼표로 잇고, 정성 검사는 'HBsAg Neg'처럼 늘 덧붙인다.
 
-    결과 항목이 없으면 빈칸(미수신), 모두 정상이면 normal_label을 적는다.
+    결과를 받지 않았으면 빈칸(미수신), H/L 항목이 없으면 normal_label을 앞에 적는다.
     """
     items = tuple(items)
-    if not items:
+    if not items and not received:
         return None
-    parts = [
+    flagged = [
         " ".join(part for part in (item.name, item.value, item.flag) if part)
         for item in items
-        if item.flag or item.critical
+        if (item.flag or item.critical) and item.name not in qualitative_names
     ]
-    return ", ".join(parts) or normal_label
+    qualitative = [f"{item.name} {item.value}" for item in items if item.name in qualitative_names]
+    return ", ".join((flagged or [normal_label]) + qualitative)
 
 
 def _check_text(value: str) -> None:
@@ -191,6 +214,8 @@ def _validate_record(record: LabRecord, policy: LabLedgerPolicy) -> RecordKey:
             raise ValueError("INVALID_TEXT_TYPE")
     if not isinstance(record.exam_kinds, tuple) or not isinstance(record.items, tuple):
         raise ValueError("INVALID_COLLECTION_TYPE")
+    if type(record.result_received) is not bool:
+        raise ValueError("INVALID_RECEIVED_FLAG")
     # 목록에 없는 검사종류는 오타·새 검사일 수 있어 추측하지 않고 거부한다.
     if any(kind not in policy.exam_kinds for kind in record.exam_kinds):
         raise ValueError("UNKNOWN_EXAM_KIND")
@@ -203,10 +228,13 @@ def _validate_record(record: LabRecord, policy: LabLedgerPolicy) -> RecordKey:
             raise ValueError("INVALID_ITEM_TEXT")
         if item.flag is not None and item.flag not in policy.result_flags:
             raise ValueError("UNKNOWN_RESULT_FLAG")
+        # 정성 검사는 판정 칸이 없으므로 H/L을 받지 않고 Neg/Pos만 받는다(B16).
+        if item.name in policy.qualitative_names and (item.flag or item.value not in policy.qualitative_values):
+            raise ValueError("INVALID_QUALITATIVE_RESULT")
         if type(item.critical) is not bool:
             raise ValueError("INVALID_CRITICAL_FLAG")
     texts = [record.report_ref, record.chart_no, record.patient_name, record.sex, record.age]
-    texts += [", ".join(record.exam_kinds), format_result(record.items, policy.normal_label)]
+    texts += [", ".join(record.exam_kinds), policy.result_text(record)]
     for value in texts:
         if value is not None:
             _check_text(value)
@@ -223,7 +251,7 @@ def _cell_value(record: LabRecord, column: Column, policy: LabLedgerPolicy) -> o
     if column.kind == "exam_kinds":
         return ", ".join(record.exam_kinds) or None
     if column.kind == "lab_result":
-        return format_result(record.items, policy.normal_label)
+        return policy.result_text(record)
     return getattr(record, column.field)
 
 
@@ -291,7 +319,8 @@ def merge_records(
                 cell.fill = CRITICAL_FILL
         # 결과란에 실제로 적히는 항목 중 약칭 목록에 없는 이름만 검토한다.
         if any(
-            item.name not in policy.item_names for item in record.items if item.flag or item.critical
+            item.name not in policy.item_names for item in record.items
+            if (item.flag or item.critical) and item.name not in policy.qualitative_names
         ):
             issues.append(ReviewIssue(row, result_header, "ITEM_NAME_UNREGISTERED"))
         if critical:

@@ -121,7 +121,7 @@ def test_unregistered_item_name_is_written_and_reviewed(workbook, policy):
 
 
 def test_registered_item_names_follow_user_list(policy):
-    assert policy.item_names == ("Hb", "Glu", "CHOL", "TG", "HDL", "LDL", "AST", "ALT", "GGT", "Cr")
+    assert policy.item_names == ("Hb", "Glu", "CHOL", "TG", "HDL", "LDL", "AST", "ALT", "GGT", "Cr", "AFP")
 
 
 def test_manual_columns_stay_blank(workbook, policy):
@@ -263,3 +263,24 @@ def test_title_row_survives_reopen_and_rows_start_below_headers(workbook, policy
     # 종이 출력용: 가로 A4 한 쪽 폭, 쪽마다 제목·열 이름 반복
     assert sheet.page_setup.orientation == "landscape" and sheet.page_setup.fitToWidth == 1
     assert sheet.print_title_rows == "$1:$2"
+
+
+def test_qualitative_results_are_always_listed(policy):
+    record = synthetic_record(items=(LabItem("AST", "52", "H"), LabItem("HBsAg", "Neg"), LabItem("Anti-HBs", "Pos")))
+    assert policy.result_text(record) == "AST 52 H, HBsAg Neg, Anti-HBs Pos"
+
+
+def test_received_without_items_is_normal_and_pending_is_blank(policy):
+    assert policy.result_text(synthetic_record(items=(), result_received=True)) == "정상"
+    assert policy.result_text(synthetic_record(items=())) is None
+
+
+@pytest.mark.parametrize("item", [LabItem("HBsAg", "Neg", "H"), LabItem("Anti-HCV", "양성")])
+def test_qualitative_items_accept_only_neg_or_pos(workbook, policy, item):
+    with pytest.raises(ValueError, match="INVALID_QUALITATIVE_RESULT"):
+        merge_records(workbook, [synthetic_record(items=(item,))], policy)
+
+
+def test_qualitative_needed_follows_exam_kinds(policy):
+    assert policy.qualitative_for(("일반검진9종", "추가b형간염", "추가c형간염")) == ("HBsAg", "Anti-HBs", "Anti-HCV")
+    assert policy.qualitative_for(("일반검진6종",)) == ()
