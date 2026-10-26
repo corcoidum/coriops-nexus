@@ -12,7 +12,7 @@ result_flags: [H, L]
 # 결과 항목이 있고 모두 정상범위이면 결과란에 적는 표기(B08). 결과 항목이 없으면 빈칸(미수신).
 normal_label: 정상
 # 결과란 항목명은 원내 약칭으로 적는다(B10). 목록에 없는 이름은 그대로 적고 검토 항목을 만든다.
-# 씨젠 Excel 항목명 → 약칭 대응은 B11(씨젠 파일 헤더) 확인 후 L4에서 정한다.
+# 씨젠 결과는 환자별 PDF(보험코드·검사항목·검사결과·판정·참고치)다. 보험코드 → 약칭 대응 제안은 docs/blood-ledger-plan.md(B12·B14).
 item_names: [Hb, Glu, CHOL, TG, HDL, LDL, AST, ALT, GGT, Cr]
 columns:
   - {header: 날짜, field: received_date, kind: date, width: 12}
