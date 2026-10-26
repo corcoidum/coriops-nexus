@@ -126,11 +126,17 @@ def test_unknown_stage_is_rejected(client):
     assert client.get("/dashboard?stage=NOTIFY_PENDING").status_code == 422
 
 
-def test_home_redirects_to_the_synthetic_dashboard(client):
-    response = client.get("/", follow_redirects=False)
+def test_home_is_today_page_linking_to_the_ledger(client):
+    response = client.get("/")
 
-    assert response.status_code == 303
-    assert response.headers["location"] == "/dashboard"
+    assert response.status_code == 200
+    assert "오늘 할 일" in response.text
+    assert 'href="/dashboard?stage=HANDOFF_PENDING"' in response.text
+    assert client.get("/dashboard?stage=HANDOFF_PENDING").status_code == 200
+    # 분변잠혈 대장 카드(A22·A23): 재검 대신 원장 확인·CFS 권고 대상자, 링크는 모두 열린다.
+    assert "분변잠혈 대장" in response.text and "CFS 권고 대상자" in response.text
+    for href in re.findall(r'href="(/fobt[^"]*)"', response.text):
+        assert client.get(href.replace("&amp;", "&")).status_code == 200, href
 
 
 def test_dashboard_is_local_html_and_prevents_browser_caching(client):

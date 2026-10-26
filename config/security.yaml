@@ -16,13 +16,21 @@ authentication:
     ledger.result: [ADMIN, DOCTOR]
     ledger.decide: [DOCTOR, ADMIN]   # ADMIN은 원장 지시의 대리 입력
     ledger.followup: [NURSE, ADMIN, DOCTOR]
+    # [가정] 위급치 표기는 관리자 확인 후(B15). 관리자 = ADMIN(사무장), 원장도 가능.
+    lab.critical_mark: [ADMIN, DOCTOR]
     excel.import: [ADMIN, DOCTOR]
     excel.export: [ADMIN, DOCTOR]
     privacy.logs: [PRIVACY_OFFICER]
     admin.staff: [PRIVACY_OFFICER]
 network:
-  # [가정] 운영 값 아님. 프록시 신뢰 대역과 PC 허용 대역은 별개다.
-  allowed_client_cidrs: ['192.168.0.0/24']
+  # 고시 제6조①1호 접근통제. DB 모드에서 이 대역 밖의 접속은 거부하고 접속기록(DENIED)에 남긴다.
+  # 프록시 신뢰 대역과 PC 허용 대역은 별개다. 원내 LAN 공개(Phase 5) 때 실제 대역으로 바꾼다(Q10).
+  allowed_client_cidrs:
+    - '127.0.0.0/8'       # 서버 PC 자신
+    - '::1/128'
+    - '172.16.0.0/12'     # Docker 브리지: 지금 장부는 127.0.0.1에만 게시되어 서버 PC 접속이 이 주소로 들어온다
+    - '192.168.65.0/24'   # Docker Desktop(Windows) 내부 대역 [확인 필요]
+    - '192.168.0.0/24'    # [가정] 원내 업무 PC 대역. 운영 값 아님
   trusted_proxy_cidrs: []
   deny_egress: true
   allow_internal_database: true

@@ -13,7 +13,7 @@
     {% if ledger == 'fobt' %}
     <div class="page-heading"><div><span class="eyebrow">FOBT LEDGER</span><h1>분변잠혈 대장</h1><p>[검진] Stool occult blood 정량. 접수 → 인계 → 결과 → 원장 확인 순서이며 재검 예정일은 두지 않습니다. 종이 대장 ③ 양식으로 출력합니다.</p></div>
     {% else %}
-    <div class="page-heading"><div><span class="eyebrow">TODAY'S LEDGER</span><h1>오늘의 조직검체 장부</h1><p>접수 → 인계 → 결과 → 원장 지시 → 재검을 한 화면에서 이어 갑니다. 분변잠혈은 분변잠혈 대장에서 관리합니다.</p></div>
+    <div class="page-heading"><div><span class="eyebrow"><span class="ledger-chip tissue">조직검체</span> TODAY'S LEDGER</span><h1>오늘의 조직검체 장부</h1><p>접수 → 인계 → 결과 → 원장 지시 → 재검을 한 화면에서 이어 갑니다. 분변잠혈은 분변잠혈 대장에서 관리합니다.</p></div>
     {% endif %}<a class="button primary" href="{{ link(new=True) }}">＋ 새 검사 접수</a></div>
 
     <section class="panel handoff-panel level-{{ pickup.level }}" aria-labelledby="handoff-title">

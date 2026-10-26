@@ -196,4 +196,8 @@ DB 자료는 Docker 볼륨 `ledger-data`에 남는다. `down -v`는 볼륨을 �
   2. 새 검사 접수
   3. 원장 지시 대기 2건 일괄 재검 불필요
   4. 지정 폴더 출력(1개 파일, 3시트)
-- 이 작업 환경에는 Docker 데몬이 없어 `docker-compose.ledger.yml` 컨테이너 실행은 하지 못했다. compose 구성은 시험으로 검사한다(DB 포트 비공개, 출력 폴더만 연결, 비밀번호는 `.env`에서만).
+- 2026-10-26 Linux Docker(29.9)로 `docker-compose.ledger.yml`을 실제로 실행했다. 처음 실행에서 두 버그를 찾아 고쳤다.
+  1. **로그인 불가:** DB 외 발신 차단이 psycopg의 이름 조회(포트를 문자열 `'5432'`로 전달)를 막아 DB 연결이 실패했다. 포트를 문자열·숫자 모두 같은 값으로 비교하도록 고쳤고, 이름으로 실제 연결하는 시험을 추가했다(`test_db_allowance_lets_psycopg_reach_the_database`).
+  2. **엑셀 출력 500:** 읽기 전용 컨테이너에 임시 폴더가 없어 openpyxl 저장이 실패했다. `/tmp`를 메모리 tmpfs(64MB, noexec)로 붙였다.
+- 고친 뒤 컨테이너에서 확인한 것: 계정 생성(`app.manage`) → 첫 로그인 비밀번호 변경 → 오늘 할 일 → 새 검사 접수 → 접속기록(접속 IP는 Docker 브리지 게이트웨이 `172.20.0.1`로 기록) → 지정 폴더 엑셀 출력. 허용 대역 밖(`10.99.0.0/24`) 컨테이너의 접속은 403·`DENIED` 기록. DB 모드의 `/lab`은 404.
+- 확인하지 못한 것: Windows Docker Desktop에서 컨테이너가 보는 접속 IP. 거부 화면에 표시되는 주소로 `config/security.yaml`의 허용 대역을 맞춘다.

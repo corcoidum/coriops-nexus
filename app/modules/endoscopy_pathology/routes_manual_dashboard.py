@@ -46,11 +46,6 @@ def redirect(path: str = "/dashboard", **params) -> RedirectResponse:
     return RedirectResponse(f"{path}?{query}" if query else path, status_code=303)
 
 
-@router.get("/")
-def home():
-    return RedirectResponse("/dashboard", status_code=303)
-
-
 def ledger_page(request: Request, service: ManualDashboardService, ledger: str, stage: str, kind: str,
                 selected_id: UUID | None, q: str, page: int, new: bool, notice: str, due: str, due_from: str,
                 due_to: str, positive: bool = False):
