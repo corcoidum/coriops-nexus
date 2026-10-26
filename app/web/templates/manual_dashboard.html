@@ -1,16 +1,17 @@
 {% extends "ledger_base.html" %}
 {% block crumb %}{{ ledger_label }}{% endblock %}
 {# 매크로 기본값에서는 화면 변수를 읽지 못하므로 none이면 본문에서 현재 값으로 채운다. #}
-{% macro link(stage=none, kind=none, q=none, page=1, selected_id=none, new=False, due=none) -%}
+{% macro link(stage=none, kind=none, q=none, page=1, selected_id=none, new=False, due=none, positive=none) -%}
 {%- set s = stage if stage is not none else current.stage -%}
 {%- set k = kind if kind is not none else current.kind -%}
 {%- set text = q if q is not none else current.query -%}
 {%- set d = due if due is not none else current.due -%}
-{{ current.path }}?stage={{ s }}&amp;kind={{ k }}{% if text %}&amp;q={{ text|urlencode }}{% endif %}{% if page > 1 %}&amp;page={{ page }}{% endif %}{% if selected_id %}&amp;selected_id={{ selected_id }}{% endif %}{% if new %}&amp;new=1{% endif %}{% if d and s == 'FOLLOWUP' %}&amp;due={{ d }}{% if d == 'range' %}&amp;due_from={{ current.due_from }}&amp;due_to={{ current.due_to }}{% endif %}{% endif %}
+{%- set p = positive if positive is not none else current.positive -%}
+{{ current.path }}?stage={{ s }}&amp;kind={{ k }}{% if text %}&amp;q={{ text|urlencode }}{% endif %}{% if page > 1 %}&amp;page={{ page }}{% endif %}{% if selected_id %}&amp;selected_id={{ selected_id }}{% endif %}{% if new %}&amp;new=1{% endif %}{% if p %}&amp;positive=1{% endif %}{% if d and s == 'FOLLOWUP' %}&amp;due={{ d }}{% if d == 'range' %}&amp;due_from={{ current.due_from }}&amp;due_to={{ current.due_to }}{% endif %}{% endif %}
 {%- endmacro %}
 {% block content %}
     {% if ledger == 'fobt' %}
-    <div class="page-heading"><div><span class="eyebrow">FOBT LEDGER</span><h1>분변잠혈 대장</h1><p>[검진] Stool occult blood 정량. 조직검체 장부와 같은 접수 → 인계 → 결과 → 원장 지시 흐름이며, 종이 대장 ③ 양식으로 출력합니다.</p></div>
+    <div class="page-heading"><div><span class="eyebrow">FOBT LEDGER</span><h1>분변잠혈 대장</h1><p>[검진] Stool occult blood 정량. 접수 → 인계 → 결과 → 원장 확인 순서이며 재검 예정일은 두지 않습니다. 종이 대장 ③ 양식으로 출력합니다.</p></div>
     {% else %}
     <div class="page-heading"><div><span class="eyebrow">TODAY'S LEDGER</span><h1>오늘의 조직검체 장부</h1><p>접수 → 인계 → 결과 → 원장 지시 → 재검을 한 화면에서 이어 갑니다. 분변잠혈은 분변잠혈 대장에서 관리합니다.</p></div>
     {% endif %}<a class="button primary" href="{{ link(new=True) }}">＋ 새 검사 접수</a></div>
@@ -44,25 +45,32 @@
     {% endif %}
 
     <section class="stat-grid" aria-label="업무 단계별 건수">
-      {% for key, label in stage_labels.items() %}
-      <a href="{% if key == 'FOLLOWUP' and flags.followup_due %}{{ link(stage=key, due='due') }}{% else %}{{ link(stage=key, due='') }}{% endif %}" class="stat-card {{ key|lower }} {% if stage == key %}selected{% endif %}" {% if stage == key %}aria-current="page"{% endif %}>
+      {% for key in stage_cards %}{% set label = stage_labels[key] %}
+      <a href="{% if key == 'FOLLOWUP' and flags.followup_due %}{{ link(stage=key, due='due', positive=False) }}{% else %}{{ link(stage=key, due='', positive=False) }}{% endif %}" class="stat-card {{ key|lower }} {% if stage == key and not positive %}selected{% endif %}" {% if stage == key and not positive %}aria-current="page"{% endif %}>
         <div class="stat-top"><span>{{ label }}</span><span class="stat-step">0{{ loop.index }}</span></div>
         <div class="stat-number">{{ counts[key] }}<span>건</span></div>
         <div class="stat-caption">
           {% if key == 'HANDOFF_PENDING' %}{{ pickup.text }}
           {% elif key == 'RESULT_PENDING' %}{% if flags.result_delayed %}<span class="alert-chip danger">지연 {{ flags.result_delayed }}</span>{% else %}{{ delay_days }}진료일 초과 시 지연{% endif %}
-          {% elif key == 'DOCTOR_PENDING' %}{% if flags.code_review %}<span class="alert-chip warn">검토 {{ flags.code_review }}</span> {% endif %}{% if flags.imported_pending %}<span class="alert-chip">과거 {{ flags.imported_pending }}</span>{% endif %}{% if not flags.code_review and not flags.imported_pending %}원장이 정한 날짜를 기록{% endif %}
+          {% elif key == 'DOCTOR_PENDING' %}{% if flags.code_review %}<span class="alert-chip warn">검토 {{ flags.code_review }}</span> {% endif %}{% if flags.imported_pending %}<span class="alert-chip">과거 {{ flags.imported_pending }}</span>{% endif %}{% if not flags.code_review and not flags.imported_pending %}{% if has_followup %}원장이 정한 날짜를 기록{% else %}원장 확인을 기록{% endif %}{% endif %}
           {% elif key == 'FOLLOWUP' %}{% if flags.followup_due %}<span class="alert-chip danger">도래 {{ flags.followup_due }}</span> {% endif %}{% if flags.followup_soon %}<span class="alert-chip warn">{{ window_days }}일 이내 {{ flags.followup_soon }}</span>{% endif %}{% if not flags.followup_due and not flags.followup_soon %}임박한 재검 없음{% endif %}
           {% else %}보관 {{ retention.years }}년{% if retention.expired %} · <span class="alert-chip warn">경과 후보 {{ retention.expired }}</span>{% endif %}{% endif %}
         </div>
       </a>
       {% endfor %}
+      {% if positive_label %}
+      <a href="{{ link(stage='ALL', due='', positive=True) }}" class="stat-card positive {% if positive %}selected{% endif %}" {% if positive %}aria-current="page"{% endif %}>
+        <div class="stat-top"><span>{{ positive_label }}자</span><span class="stat-step">CFS</span></div>
+        <div class="stat-number">{{ flags.positive_subjects }}<span>명</span></div>
+        <div class="stat-caption">{% if flags.positive_subjects %}<span class="alert-chip warn">양성 {{ flags.positive_subjects }}명</span>{% else %}양성 결과 없음{% endif %} · 결과지 양성 표기 기준</div>
+      </a>
+      {% endif %}
     </section>
 
     <div class="work-grid">
       <section class="panel worklist">
         <div class="panel-header">
-          <div><h2>{% if stage == 'ALL' %}전체 장부{% elif due %}재검 대상 · {{ due_labels[due] }}{% else %}{{ stage_labels[stage] }}{% endif %}<span class="count-tag">{{ matched }}</span></h2><p>{% if due and due_window[1] %}재검일 {% if due_window[0] %}{{ due_window[0].strftime('%Y.%m.%d') }}{% else %}처음{% endif %} ~ {{ due_window[1].strftime('%Y.%m.%d') }}, 재검일 순서{% else %}행을 선택하면 오른쪽에서 다음 업무를 기록합니다.{% endif %}</p></div>
+          <div><h2>{% if positive %}{{ positive_label }}자 · 양성 결과{% elif stage == 'ALL' %}전체 장부{% elif due %}재검 대상 · {{ due_labels[due] }}{% else %}{{ stage_labels[stage] }}{% endif %}<span class="count-tag">{{ matched }}</span></h2><p>{% if due and due_window[1] %}재검일 {% if due_window[0] %}{{ due_window[0].strftime('%Y.%m.%d') }}{% else %}처음{% endif %} ~ {{ due_window[1].strftime('%Y.%m.%d') }}, 재검일 순서{% elif positive %}결과지에 양성(+, 양성, Positive)으로 적힌 결과입니다. CFS 시행 여부는 원장이 결정합니다.{% else %}행을 선택하면 오른쪽에서 다음 업무를 기록합니다.{% endif %}</p></div>
           <form class="search-form" action="{{ current.path }}" method="get" role="search">
             <input type="hidden" name="stage" value="{{ stage }}"><input type="hidden" name="kind" value="{{ kind }}">{% if due %}<input type="hidden" name="due" value="{{ due }}">{% if due == 'range' %}<input type="hidden" name="due_from" value="{{ due_from }}"><input type="hidden" name="due_to" value="{{ due_to }}">{% endif %}{% endif %}
             <label class="visually-hidden" for="q">차트번호·이름·접수번호·결과코드 검색</label>
@@ -95,10 +103,17 @@
         {% if bulk %}
         <form id="bulk-form" class="bulk-bar" action="/ledger/bulk-decide" method="post">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="ledger" value="{{ ledger }}">
+          {% if has_followup %}
           <span>선택한 건을 원장 지시로</span>
           <label class="visually-hidden" for="bulk-reason">재검 불필요 사유</label>
           <input id="bulk-reason" name="reason" maxlength="120" required placeholder="재검 불필요 사유 (원장 지시)" autocomplete="off">
           <button class="button secondary" type="submit">선택 건 재검 불필요 기록</button>
+          {% else %}
+          <span>선택한 건을 원장 확인으로</span>
+          <label class="visually-hidden" for="bulk-reason">확인 메모</label>
+          <input id="bulk-reason" name="reason" maxlength="120" placeholder="확인 메모 (선택)" autocomplete="off">
+          <button class="button secondary" type="submit">선택 건 원장 확인 기록</button>
+          {% endif %}
         </form>
         {% endif %}
         <div class="table-scroll"><table><thead><tr>{% if bulk %}<th scope="col"><span class="visually-hidden">선택</span></th>{% endif %}<th scope="col">대상</th><th scope="col">검사</th><th scope="col">진행 상태</th><th scope="col">결과</th><th scope="col">다음 업무</th></tr></thead><tbody>
@@ -151,7 +166,7 @@
       {% elif selected %}{% set alert = alerts[selected.id] %}{% set sel_stage = stages[selected.id] %}
         <div class="detail-header"><span class="eyebrow">NEXT ACTION</span><h2 id="detail-title">{{ stage_actions[sel_stage] }}</h2><div class="detail-person">{{ selected.patient_name }}<span>{{ kind_labels[selected.kind] }}{% if selected.procedure_label %} · {{ selected.procedure_label }}{% endif %} · {{ selected.chart_no }}{% if selected.specimen_count %} · {{ selected.specimen_count }}병{% endif %}</span></div></div>
         <div class="detail-body">
-          <div class="step-track" aria-label="현재 단계">{% set order = ['HANDOFF_PENDING', 'RESULT_PENDING', 'DOCTOR_PENDING', 'FOLLOWUP', 'CLOSED'] %}{% for key in order %}{% if not loop.first %}<i></i>{% endif %}<span class="{% if order.index(key) <= order.index(sel_stage) %}step-done{% endif %}">{{ loop.index }}</span>{% endfor %}</div>
+          <div class="step-track" aria-label="현재 단계">{% set order = ['HANDOFF_PENDING', 'RESULT_PENDING', 'DOCTOR_PENDING', 'FOLLOWUP', 'CLOSED'] if has_followup or sel_stage == 'FOLLOWUP' else ['HANDOFF_PENDING', 'RESULT_PENDING', 'DOCTOR_PENDING', 'CLOSED'] %}{% for key in order %}{% if not loop.first %}<i></i>{% endif %}<span class="{% if order.index(key) <= order.index(sel_stage) %}step-done{% endif %}">{{ loop.index }}</span>{% endfor %}</div>
           <p class="alert-chip {{ alert.level }}">{{ alert.text }}</p>
           {% if sel_stage == 'HANDOFF_PENDING' %}
           <p class="form-intro">위쪽 <strong>오늘 수탁기관 인계</strong>에서 직접 센 병 수를 입력하면 인계 대기 검체가 한 번에 결과 대기로 넘어갑니다.</p>
@@ -175,7 +190,14 @@
             {% if selected.site %}<div><dt>부위</dt><dd>{{ selected.site }}</dd></div>{% endif %}
             {% if selected.reported_on %}<div><dt>회신날짜</dt><dd>{{ selected.reported_on.strftime('%Y.%m.%d') }}</dd></div>{% endif %}
           </dl>
-          {% if sel_stage == 'DOCTOR_PENDING' %}
+          {% if sel_stage == 'DOCTOR_PENDING' and not has_followup %}
+          <p class="form-intro">원장이 결과를 확인했음을 기록합니다. 재검 예정일은 두지 않습니다.{% if alert.level == 'warn' and positive_label %} 양성 표기 결과라 {{ positive_label }}자 수에 들어갑니다.{% endif %}</p>
+          <form action="/ledger/cases/{{ selected.id }}/decide" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="mode" value="confirmed">
+            <label for="reason">확인 메모 <span class="optional">선택</span></label><input id="reason" name="reason" maxlength="120" placeholder="예: CFS 안내" autocomplete="off">
+            <button class="button primary full" type="submit">원장 확인 기록 <span aria-hidden="true">→</span></button>
+          </form>
+          {% elif sel_stage == 'DOCTOR_PENDING' %}
           <p class="form-intro">원장이 정한 재검 시점을 그대로 기록합니다.</p>
           <form action="/ledger/cases/{{ selected.id }}/decide" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -185,7 +207,11 @@
             <button class="button primary full" type="submit">원장 지시 기록 <span aria-hidden="true">→</span></button>
           </form>
           {% else %}
+          {% if not has_followup and not selected.followup_due %}
+          <div class="decision-box"><span>원장 확인</span><strong>{% if alert.level == 'warn' and positive_label %}{{ positive_label }}{% else %}확인 완료{% endif %}</strong>{% if selected.no_followup_reason %}<p>{{ selected.no_followup_reason }}</p>{% endif %}{% if selected.decided_by %}<p class="recorded-by">기록: {{ selected.decided_by }}</p>{% endif %}</div>
+          {% else %}
           <div class="decision-box"><span>기록된 원장 지시</span>{% if selected.followup_due %}<strong>{{ selected.followup_due.strftime('%Y.%m.%d') }} 재검</strong>{% else %}<strong>재검 불필요</strong><p>{{ selected.no_followup_reason }}</p>{% endif %}{% if selected.decided_by %}<p class="recorded-by">기록: {{ selected.decided_by }}</p>{% endif %}</div>
+          {% endif %}
           {% if sel_stage == 'FOLLOWUP' %}
           <p class="form-intro">재검을 시행했으면 날짜를 기록해 재검 대상에서 내립니다.</p>
           <form action="/ledger/cases/{{ selected.id }}/followup-done" method="post">

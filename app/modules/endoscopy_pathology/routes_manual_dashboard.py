@@ -53,10 +53,11 @@ def home():
 
 def ledger_page(request: Request, service: ManualDashboardService, ledger: str, stage: str, kind: str,
                 selected_id: UUID | None, q: str, page: int, new: bool, notice: str, due: str, due_from: str,
-                due_to: str):
+                due_to: str, positive: bool = False):
     actor = require(request, "ledger.view")
     context = service.snapshot(stage=stage, selected_id=selected_id, query=q, kind=kind, page=page, due=due,
-                               due_from=form_date(due_from), due_to=form_date(due_to), ledger=ledger)
+                               due_from=form_date(due_from), due_to=form_date(due_to), ledger=ledger,
+                               positive=positive)
     # 새 접수 폼: 조직검체 장부는 내시경(조직검사·RUT) 한 줄, 분변잠혈 대장은 Stool 1건(A22).
     context.update(new=new, new_kind="STOOL" if ledger == "fobt" else "", notice=NOTICES.get(notice, ""),
                    can_export=actor.can("excel.export"))
@@ -78,10 +79,11 @@ def dashboard(request: Request, service: Service, stage: str = "ALL", kind: str 
 @router.get("/fobt")
 def fobt(request: Request, service: Service, stage: str = "ALL", kind: str = "ALL",
          selected_id: UUID | None = None, q: str = "", page: int = 1, new: bool = False, notice: str = "",
-         due: str = "", due_from: str = "", due_to: str = ""):
-    """분변잠혈 대장(A22). 조직검체 장부와 같은 흐름을 Stool만 걸러 보여준다."""
+         due: str = "", due_from: str = "", due_to: str = "", positive: bool = False):
+    """분변잠혈 대장(A22). Stool만 걸러 보여주며 재검 날짜 없이 원장 확인만 기록한다(A23).
+    positive=1이면 양성 표기 결과(CFS 권고 대상)만 본다."""
     return ledger_page(request, service, "fobt", stage, kind, selected_id, q, page, new, notice, due,
-                       due_from, due_to)
+                       due_from, due_to, positive)
 
 
 @router.post("/ledger/register", dependencies=[Csrf])

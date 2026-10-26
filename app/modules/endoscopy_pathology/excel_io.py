@@ -75,7 +75,10 @@ class LedgerAppConfig:
             required_fields=tuple(raw["required_fields"]), ignored_headers=frozenset(raw["ignored_headers"]),
             procedure_types=raw["procedure_types"], sexes=raw["sexes"],
             short_result_pattern=re.compile(raw["short_result_pattern"]),
-            max_rows_per_sheet=int(raw["max_rows_per_sheet"]), export=raw["export"], ledgers=raw["ledgers"],
+            max_rows_per_sheet=int(raw["max_rows_per_sheet"]), export=raw["export"],
+            ledgers={name: {**meta, "positive_re": re.compile(meta["positive_pattern"], re.IGNORECASE)
+                            if meta.get("positive_pattern") else None}
+                     for name, meta in raw["ledgers"].items()},
         )
 
     def ledger_kinds(self, ledger: str) -> tuple[str, ...]:
@@ -84,6 +87,18 @@ class LedgerAppConfig:
 
     def ledger_path(self, kind: str) -> str:
         return self.ledgers[self.kinds[kind]["ledger"]]["path"]
+
+    def kind_ledger(self, kind: str) -> dict:
+        return self.ledgers[self.kinds[kind]["ledger"]]
+
+    def has_followup(self, kind: str) -> bool:
+        """그 종류의 원장 지시에 재검 날짜가 있는지. 분변잠혈은 없다(A23)."""
+        return self.kind_ledger(kind).get("followup", True)
+
+    def is_positive(self, kind: str, result_code: str) -> bool:
+        """직원이 적은 결과가 결과지의 양성 표기인지. 표기만 보고, 수치·임상 의미는 판단하지 않는다."""
+        pattern = self.kind_ledger(kind)["positive_re"]
+        return bool(pattern and result_code and pattern.search(result_code))
 
     @property
     def handoff_kinds(self) -> frozenset[str]:
@@ -493,7 +508,8 @@ def format_sex_age(sex: str | None, age: int | None) -> str:
     return f"{sex or ''}/{age if age is not None else ''}"
 
 
-def build_paper_workbook(form: str, rows: list[dict], start: date, end: date, printed: datetime) -> Workbook:
+def build_paper_workbook(form: str, rows: list[dict], start: date, end: date, printed: datetime,
+                         summary: str = "") -> Workbook:
     """종이 대장과 같은 열 순서·제목으로 출력한다. A4 가로, 열 이름 줄은 쪽마다 반복."""
     spec = PAPER_FORMS[form]
     workbook = Workbook()
@@ -511,7 +527,8 @@ def build_paper_workbook(form: str, rows: list[dict], start: date, end: date, pr
     sheet.row_dimensions[1].height = 30
     sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=columns)
     sheet["A2"] = ((f"{spec['subtitle']} · " if spec.get("subtitle") else "")
-                   + f"기간 {start:%Y.%m.%d} ~ {end:%Y.%m.%d} · {len(rows)}줄 · 출력 {printed:%Y.%m.%d %H:%M}"
+                   + f"기간 {start:%Y.%m.%d} ~ {end:%Y.%m.%d} · {len(rows)}줄 · "
+                   + (f"{summary} · " if summary else "") + f"출력 {printed:%Y.%m.%d %H:%M}"
                    " · CoriOps DB 사본(종이 대장 대조용)")
     sheet["A2"].font = Font(size=9, color="555555")
     sheet["A2"].alignment = Alignment(horizontal="right")

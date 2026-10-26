@@ -105,7 +105,7 @@ def test_seed_has_fourteen_independent_cases_in_every_stage(app):
     }
     assert fobt["counts"]["CLOSED"] == 1 and {case.kind for case in fobt["cases"]} == {"STOOL"}
     assert first["flags"] == {"result_delayed": 1, "code_review": 1, "imported_pending": 0,
-                              "followup_due": 1, "followup_overdue": 1, "followup_soon": 1}
+                              "followup_due": 1, "followup_overdue": 1, "followup_soon": 1, "positive_subjects": 0}
     assert {case.kind for case in first["cases"]} == {"BIOPSY", "CLO"}
     assert snapshot(second_app)["counts"] == first["counts"]
     assert app.state.dashboard_service is not second_app.state.dashboard_service

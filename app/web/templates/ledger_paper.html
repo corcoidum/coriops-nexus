@@ -24,7 +24,7 @@
         </form>{% endif %}
       </div>
       <h2 id="paper-title" class="paper-title">{{ title }}</h2>
-      <p class="paper-period">{{ start.strftime('%Y.%m.%d') }} ~ {{ end.strftime('%Y.%m.%d') }} · {{ rows|length }}줄 · 화면에서는 성명 가운데를 가립니다(출력 파일에는 전체 성명)</p>
+      <p class="paper-period">{{ start.strftime('%Y.%m.%d') }} ~ {{ end.strftime('%Y.%m.%d') }} · {{ rows|length }}줄{% if summary %} · <strong>{{ summary }}</strong>{% endif %} · 화면에서는 성명 가운데를 가립니다(출력 파일에는 전체 성명)</p>
       <div class="table-scroll"><table class="paper-table">
         <thead><tr>{% for header in headers %}<th>{{ header|replace('\n', ' ') }}</th>{% endfor %}</tr></thead>
         <tbody>

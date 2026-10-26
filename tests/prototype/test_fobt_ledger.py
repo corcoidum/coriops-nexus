@@ -132,3 +132,76 @@ def test_followup_export_is_scoped_by_ledger(service):
     with pytest.raises(DashboardError) as tissue_only:
         service.export_followups(kind="STOOL", due="due")
     assert tissue_only.value.status_code == 422
+
+
+def reported(service, number: int, result: str, chart: int | None = None):
+    """인계·결과 입력까지 마친 분변잠혈 1건(원장 확인 대기)."""
+    entry = service.register("STOOL", f"T-{chart or number:04}", f"테스트변{chart or number}", DAY, "M", "70")
+    bottles = service.snapshot(ledger="fobt")["pickup"]["pending_specimens"]
+    service.handoff("테스트접수", "테스트인계", "테스트수령", bottles)
+    service.receive(entry, "", result, "")
+    return entry
+
+
+def test_fobt_has_no_followup_date_only_doctor_confirmation(service):
+    entry = reported(service, 11, "Negative 6.0")
+    view = service.snapshot(ledger="fobt")
+    assert "FOLLOWUP" not in view["stage_cards"] and view["stage_labels"]["DOCTOR_PENDING"] == "원장 확인 대기"
+    with pytest.raises(DashboardError) as no_due:
+        service.decide(entry, "required", DAY)
+    assert no_due.value.status_code == 422
+    with pytest.raises(DashboardError):
+        service.snapshot(ledger="fobt", due="due")
+    service.decide(entry, "confirmed", reason="", actor="테스트원장")
+    view = service.snapshot(ledger="fobt", selected_id=entry)
+    assert view["stages"][entry] == "CLOSED" and view["selected"].followup_due is None
+    assert view["alerts"][entry].text == "원장 확인"
+    # 조직검체는 그대로 재검 날짜를 받고, '확인'만으로는 닫히지 않는다.
+    biopsy = service.register("BIOPSY", "T-0012", "테스트조직", DAY, procedure_type="stomach", specimen_count="1")
+    assert "FOLLOWUP" in service.snapshot()["stage_cards"]
+    with pytest.raises(DashboardError):
+        service.decide(biopsy, "confirmed")
+
+
+def test_positive_results_count_cfs_subjects_by_chart(service):
+    first = reported(service, 21, "Positive 152")
+    reported(service, 22, "+", chart=21)          # 같은 수진자 → 1명
+    reported(service, 23, "양성")
+    reported(service, 24, "Negative 6.0")
+    reported(service, 25, "152")                  # 양성 표기 없는 수치는 세지 않는다
+    view = service.snapshot(ledger="fobt")
+    assert view["flags"]["positive_subjects"] == 2 and view["positive_label"] == "CFS 권고 대상"
+    assert view["alerts"][first].text == "양성 · CFS 권고 대상"
+    only = service.snapshot(ledger="fobt", positive=True)
+    assert {c.chart_no for c in only["cases"]} == {"T-0021", "T-0023"} and only["matched"] == 3
+    service.decide(first, "confirmed", reason="CFS 안내")
+    assert service.snapshot(ledger="fobt")["alerts"][first].text == "CFS 권고 대상"
+    with pytest.raises(DashboardError):
+        service.snapshot(positive=True)  # 조직검체 장부에는 양성 대상자 목록이 없다
+
+
+def test_fobt_page_shows_cfs_card_and_confirm_form(client):
+    post(client, "/ledger/register", kind="STOOL", exam_date="2026-11-04", chart_no="T-0401",
+         patient_name="테스트변", sex_age="M/70")
+    entry_id = client.app_state.dashboard_service.snapshot(ledger="fobt", query="T-0401")["cases"][0].id
+    post(client, "/ledger/handoff", registered_by="테스트접수", handed_by="테스트인계",
+         receiver_name="테스트수령", confirmed_count="1", ledger="fobt")
+    post(client, f"/ledger/cases/{entry_id}/receive", result_notation="Positive 152")
+    page = client.get(f"/fobt?selected_id={entry_id}").text
+    assert "CFS 권고 대상자" in page and 'value="confirmed"' in page and "재검 날짜 지정" not in page
+    assert "<span>재검 예정</span>" not in page and "/fobt?stage=ALL&amp;kind=ALL&amp;positive=1" in page
+    positive_page = client.get("/fobt?stage=ALL&kind=ALL&positive=1").text
+    assert "T-0401" in positive_page and "CFS 시행 여부는 원장이 결정합니다" in positive_page
+    bulk = post(client, "/ledger/bulk-decide", entry_ids=str(entry_id), reason="", ledger="fobt")
+    assert bulk.status_code == 303 and bulk.headers["location"].startswith("/fobt?")
+    done = client.get(f"/fobt?selected_id={entry_id}").text
+    assert "원장 확인" in done and "재검 불필요" not in done
+
+
+def test_paper_form_three_notes_cfs_subjects_in_period(service, tmp_path):
+    reported(service, 31, "Positive 152")
+    reported(service, 32, "Negative 6.0")
+    data = service.paper_rows("fobt", DAY, DAY)
+    assert data["summary"] == "CFS 권고 대상자 1명"
+    record, _ = service.export_paper("fobt", DAY, DAY)
+    assert "CFS 권고 대상자 1명" in load_workbook(tmp_path / record.file_name).active["A2"].value
