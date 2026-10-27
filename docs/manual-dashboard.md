@@ -43,7 +43,7 @@ docker compose -f docker-compose.prototype.yml --profile dashboard stop dashboar
 - 2026-10-22 시연의 환자 안내 단계(안내 완료·부재 기록)는 A12에 따라 제거했다.
 - 공휴일은 `holidays` 패키지에 포함된 KR 데이터만 사용하고 실행 중 내려받지 않는다. 지정 스택에 있던 패키지를 이번에 `pyproject.toml`에 고정했다.
 - UUID 합성 12건, 앱별 독립 메모리, 단계 순서·필수값 검증, Jinja 자동 escape, CSRF 확인, 브라우저 캐시 금지, 오류 화면에 입력값 미표시를 적용한다.
-- Docker Desktop에서 `internal` network의 포트 게시가 되지 않아 시연 서버는 별도 bridge와 loopback 게시를 사용한다. `app.demo_server`가 Python audit hook으로 DNS 조회·발신 연결·UDP 전송 API를 거부한다. 이것은 이 합성 Python 시연의 발신 제한이며 정식 운영의 OS/네트워크 방화벽을 대신하지 않는다.
+- Docker Desktop에서 `internal` network의 포트 게시가 되지 않아 시연 서버는 별도 bridge와 loopback 게시를 사용한다. `app.demo_server`가 Python audit hook으로 DNS 조회·발신 연결·UDP 전송 API를 거부한다. Windows asyncio가 `socket.socketpair`를 loopback 연결로 만들기 때문에 그 호출 안의 loopback 연결만 예외로 둔다. 이것은 이 합성 Python 시연의 발신 제한이며 정식 운영의 OS/네트워크 방화벽을 대신하지 않는다.
 - 내부 보안 유지 방법은 [단계별 제안](privacy/internal-security-proposal.md)을 따른다. 이 시연의 통제를 실데이터 운영 준비로 해석하지 않는다.
 
 ## 검증 결과 — 2026-10-24

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time, timedelta
 
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 import pytest
 
 from app.main import create_app
+from app.modules.endoscopy_pathology.ledger_model import KST
 from app.modules.endoscopy_pathology.manual_dashboard import DashboardError, ManualDashboardService
 from ledger_helpers import FixedClock
 
@@ -17,13 +18,20 @@ TODAY = date(2026, 11, 5)
 
 def followup(service, chart, due, kind="BIOPSY"):
     """합성 재검 예정 1건: 접수 → 인계 → 결과 → 원장 지시."""
-    extra = {"procedure_type": "colon", "specimen_count": "1"} if kind == "BIOPSY" else {}
-    entry_id = service.register(kind, chart, f"재검{chart[-2:]}", date(2025, 11, 5), **extra)
-    pending = [e for e in service._store.entries() if service._stage(e) == "HANDOFF_PENDING"]
-    if pending:
-        service.handoff("a", "b", "c", sum(e.specimen_count or 1 for e in pending))
-    service.receive(entry_id, f"R{chart}", "TA#1(L)" if kind == "BIOPSY" else "+", "합성 위치")
-    service.decide(entry_id, "required", due)
+    # 원장 지시는 오늘 이후 날짜만 받는다. 이미 지난 재검일은 그 전날 처리한 건으로 재현한다.
+    clock, moment = service._clock, service._clock.moment
+    if due < TODAY:
+        clock.moment = datetime.combine(due - timedelta(days=1), time(10), KST)
+    try:
+        extra = {"procedure_type": "colon", "specimen_count": "1"} if kind == "BIOPSY" else {}
+        entry_id = service.register(kind, chart, f"재검{chart[-2:]}", date(2025, 11, 5), **extra)
+        pending = [e for e in service._store.entries() if service._stage(e) == "HANDOFF_PENDING"]
+        if pending:
+            service.handoff("a", "b", "c", sum(e.specimen_count or 1 for e in pending))
+        service.receive(entry_id, f"R{chart}", "TA#1(L)" if kind == "BIOPSY" else "+", "합성 위치")
+        service.decide(entry_id, "required", due)
+    finally:
+        clock.moment = moment
     return entry_id
 
 

@@ -14,6 +14,7 @@ from fastapi.responses import RedirectResponse
 from app.kernel.web import audit, check_csrf, render, require
 
 from .excel_io import PAPER_FORMS
+from .ledger_model import KINDS, STAGE_LABELS
 from .manual_dashboard import DashboardError, ManualDashboardService, form_date, parse_sex_age
 
 
@@ -44,6 +45,20 @@ Csrf = Depends(csrf)
 def redirect(path: str = "/dashboard", **params) -> RedirectResponse:
     query = urlencode({k: v for k, v in params.items() if v not in (None, "")})
     return RedirectResponse(f"{path}?{query}" if query else path, status_code=303)
+
+
+# 처리 후에도 그 검사가 속한 장부의 보던 단계·종류 목록으로 돌아간다. 알 수 없는 값은 전체 보기로 되돌린다.
+ReturnStage = Annotated[str, Form(alias="stage")]
+ReturnKind = Annotated[str, Form(alias="kind")]
+
+
+def case_redirect(service: ManualDashboardService, entry_id: UUID, stage: str, kind: str) -> RedirectResponse:
+    stage = stage if stage in STAGE_LABELS else ""
+    kind = kind if kind in KINDS else ""
+    # 다음 단계로 넘어간 항목은 보던 단계의 목록·상세와 어긋나므로 선택하지 않는다.
+    keep = not stage or service.stage_of(entry_id) == stage
+    return redirect(service.ledger_path_of(entry_id), stage=stage, kind=kind,
+                    selected_id=entry_id if keep else None)
 
 
 def ledger_page(request: Request, service: ManualDashboardService, ledger: str, stage: str, kind: str,
@@ -120,20 +135,22 @@ def handoff(request: Request, service: Service, registered_by: Annotated[str, Fo
 @router.post("/ledger/cases/{entry_id}/receive", dependencies=[Csrf])
 def receive(request: Request, entry_id: UUID, service: Service, report_ref: Annotated[str, Form()] = "",
             result_notation: Annotated[str, Form()] = "", site_summary: Annotated[str, Form()] = "",
-            sydney_notation: Annotated[str, Form()] = ""):
+            sydney_notation: Annotated[str, Form()] = "",
+            return_stage: ReturnStage = "", return_kind: ReturnKind = ""):
     require(request, "ledger.result")
     service.receive(entry_id, report_ref, result_notation, site_summary, sydney_notation)
     audit(request, "UPDATE", "ledger_result", subjects=[service.subject_of(entry_id)])
-    return redirect(service.ledger_path_of(entry_id), selected_id=entry_id)
+    return case_redirect(service, entry_id, return_stage, return_kind)
 
 
 @router.post("/ledger/cases/{entry_id}/decide", dependencies=[Csrf])
 def decide(request: Request, entry_id: UUID, service: Service, mode: Annotated[str, Form()] = "",
-           due_date: Annotated[str, Form()] = "", reason: Annotated[str, Form()] = ""):
+           due_date: Annotated[str, Form()] = "", reason: Annotated[str, Form()] = "",
+           return_stage: ReturnStage = "", return_kind: ReturnKind = ""):
     actor = require(request, "ledger.decide")
     service.decide(entry_id, mode, form_date(due_date), reason, actor=actor.label)
     audit(request, "UPDATE", "ledger_decision", subjects=[service.subject_of(entry_id)])
-    return redirect(service.ledger_path_of(entry_id), selected_id=entry_id)
+    return case_redirect(service, entry_id, return_stage, return_kind)
 
 
 @router.post("/ledger/bulk-decide", dependencies=[Csrf])
@@ -146,11 +163,12 @@ def bulk_decide(request: Request, service: Service, entry_ids: Annotated[list[UU
 
 
 @router.post("/ledger/cases/{entry_id}/followup-done", dependencies=[Csrf])
-def followup_done(request: Request, entry_id: UUID, service: Service, done_on: Annotated[str, Form()] = ""):
+def followup_done(request: Request, entry_id: UUID, service: Service, done_on: Annotated[str, Form()] = "",
+                  return_stage: ReturnStage = "", return_kind: ReturnKind = ""):
     actor = require(request, "ledger.followup")
     service.complete_followup(entry_id, form_date(done_on), actor=actor.label)
     audit(request, "UPDATE", "ledger_followup", subjects=[service.subject_of(entry_id)])
-    return redirect(service.ledger_path_of(entry_id), selected_id=entry_id)
+    return case_redirect(service, entry_id, return_stage, return_kind)
 
 
 @router.get("/ledger/excel")

@@ -386,6 +386,10 @@ def test_no_followup_reason_closes_without_a_date(client, app):
     {"mode": "not_required"},
     {"mode": "not_required", "reason": "  "},
     {"mode": "automatic", "due_date": "2030-01-15"},
+    # fromisoformat이 받는 압축·주차 표기와 오늘(2026-11-05) 이전 날짜는 거부한다.
+    {"mode": "required", "due_date": "20300115"},
+    {"mode": "required", "due_date": "2030-W03-2"},
+    {"mode": "required", "due_date": "2026-11-04"},
 ])
 def test_invalid_decisions_are_rejected_without_changing_the_case(client, app, data):
     case_id = case_in_stage(app, "DOCTOR_PENDING").id
@@ -393,6 +397,48 @@ def test_invalid_decisions_are_rejected_without_changing_the_case(client, app, d
 
     assert post_case(client, app, case_id, "decide", **data).status_code == 422
     assert case_state(app, case_id) == before
+
+
+def test_due_date_of_today_is_accepted(client, app):
+    case_id = case_in_stage(app, "DOCTOR_PENDING").id
+
+    assert post_case(client, app, case_id, "decide", mode="required", due_date="2026-11-05").status_code == 303
+    assert current_case(app, case_id).followup_due == date(2026, 11, 5)
+
+
+@pytest.mark.parametrize(("stage", "action", "data"), [
+    ("RESULT_PENDING", "receive", receive_data()),
+    ("DOCTOR_PENDING", "decide", {"mode": "required", "due_date": "2030-01-15"}),
+    ("FOLLOWUP", "followup-done", {"done_on": "2026-11-05"}),
+])
+def test_case_that_left_the_filter_is_not_selected_on_return(client, app, stage, action, data):
+    case = case_in_stage(app, stage)
+
+    response = post_case(client, app, case.id, action, stage=stage, kind=case.kind, **data)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/dashboard?stage={stage}&kind={case.kind}"
+    assert stage_of(app, case.id) != stage
+    assert client.get(response.headers["location"]).status_code == 200
+
+
+@pytest.mark.parametrize("stage", ["", "ALL", "UNKNOWN"])
+def test_without_a_stage_filter_the_case_stays_selected(client, app, stage):
+    case = case_in_stage(app, "DOCTOR_PENDING")
+
+    response = post_case(client, app, case.id, "decide", stage=stage, kind="ALL",
+                         mode="required", due_date="2030-01-15")
+
+    assert response.headers["location"] == f"/dashboard?selected_id={case.id}"
+
+
+def test_case_forms_carry_the_current_view(client, app):
+    case = case_in_stage(app, "DOCTOR_PENDING")
+
+    page = client.get(f"/dashboard?stage=DOCTOR_PENDING&kind={case.kind}&selected_id={case.id}").text
+
+    assert '<input type="hidden" name="stage" value="DOCTOR_PENDING">' in page
+    assert f'<input type="hidden" name="kind" value="{case.kind}">' in page
 
 
 @pytest.mark.parametrize("done_on", ["", "2026-11-06", "2026-13-01"])

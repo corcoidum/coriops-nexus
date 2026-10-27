@@ -43,6 +43,7 @@ CONFIG_DIR = Path(__file__).resolve().parents[3] / "config"
 STAGE_ORDER = {key: index for index, key in enumerate(STAGE_LABELS)}
 REPORT_REF = re.compile(r"^[0-9A-Za-z-]{4,20}$")
 CHART_NO = re.compile(r"^[0-9A-Za-z-]{1,20}$")
+ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 SEARCH_MAX = 30
 PAGE_SIZE = 50
 BULK_MAX = 200
@@ -167,6 +168,10 @@ class ManualDashboardService:
         return self._store._engine
 
     # ---------- 접속기록용 정보주체(차트번호) 조회
+
+    def stage_of(self, entry_id: UUID) -> str:
+        with self._lock:
+            return self._stage(self._get(entry_id))
 
     def subject_of(self, entry_id: UUID) -> str:
         return self._get(entry_id).chart_no
@@ -569,6 +574,9 @@ class ManualDashboardService:
         if mode == "required":
             if due_date is None:
                 raise DashboardError("원장이 정한 재검 날짜를 입력해 주세요.", 422)
+            # 연도 오타 등으로 이미 지난 날짜가 지시로 남지 않게 한다. 날짜를 대신 정하지는 않는다.
+            if due_date < now.astimezone(KST).date():
+                raise DashboardError("재검 날짜가 오늘보다 이전입니다. 원장이 정한 날짜를 다시 확인해 주세요.", 422)
             clean_reason = ""
         elif mode == "not_required":
             clean_reason = self._text(reason, "재검 불필요 사유", 120)
@@ -960,6 +968,9 @@ def parse_sex_age(value: str) -> tuple[str, str]:
 
 
 def form_date(value: str) -> date | None:
+    # fromisoformat은 20300115·2030-W03-2도 받으므로 브라우저 date 입력 형식만 허용한다.
+    if value and not ISO_DATE.fullmatch(value):
+        raise DashboardError("날짜 형식을 확인해 주세요.", 422)
     try:
         return date.fromisoformat(value) if value else None
     except ValueError:

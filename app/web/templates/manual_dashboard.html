@@ -174,7 +174,7 @@
           {% set codes = selected.kind == 'BIOPSY' %}
           <p class="form-intro">{% if codes %}전체 결과가 공개되면 장부 표기 그대로 코드로 입력합니다. 판독문 문장은 입력하지 않습니다.{% else %}판정을 짧게 입력합니다(예: +, -, 양성, 음성).{% endif %}</p>
           <form action="/ledger/cases/{{ selected.id }}/receive" method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="stage" value="{{ stage }}"><input type="hidden" name="kind" value="{{ kind }}">
             <label for="report_ref">접수번호 {% if codes %}<span class="required">필수</span>{% else %}<span class="optional">선택</span>{% endif %}</label><input id="report_ref" name="report_ref" maxlength="20" {% if codes %}required{% endif %} placeholder="예: T9700001" autocomplete="off">
             <label for="result_notation">{% if codes %}조직검사결과 코드{% else %}검사결과{% endif %} <span class="required">필수</span></label><input id="result_notation" name="result_notation" maxlength="120" required placeholder="{% if codes %}예: TA#2(L), H#1{% else %}예: +{% endif %}" autocomplete="off">
             {% if codes %}<p class="field-help">코드#개수(보조표기)를 쉼표로 잇습니다. 미등록 코드는 저장하되 약어 사전 검토로 표시됩니다.</p>{% endif %}
@@ -200,7 +200,7 @@
           {% elif sel_stage == 'DOCTOR_PENDING' %}
           <p class="form-intro">원장이 정한 재검 시점을 그대로 기록합니다.</p>
           <form action="/ledger/cases/{{ selected.id }}/decide" method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="stage" value="{{ stage }}"><input type="hidden" name="kind" value="{{ kind }}">
             <fieldset class="segmented"><legend>원장 지시</legend><label><input type="radio" name="mode" value="required" checked> 재검 날짜 지정</label><label><input type="radio" name="mode" value="not_required"> 재검 불필요</label></fieldset>
             <label for="due_date">지정한 재검 날짜</label><input type="date" id="due_date" name="due_date"><p class="field-help">권장 날짜는 자동으로 채우지 않습니다.</p>
             <label for="reason">재검 불필요 사유</label><input id="reason" name="reason" maxlength="120" placeholder="불필요를 선택한 경우 입력" autocomplete="off">
@@ -215,7 +215,7 @@
           {% if sel_stage == 'FOLLOWUP' %}
           <p class="form-intro">재검을 시행했으면 날짜를 기록해 재검 대상에서 내립니다.</p>
           <form action="/ledger/cases/{{ selected.id }}/followup-done" method="post">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="stage" value="{{ stage }}"><input type="hidden" name="kind" value="{{ kind }}">
             <label for="done_on">재검 시행일</label><input type="date" id="done_on" name="done_on" required max="{{ today.isoformat() }}">
             <button class="button primary full" type="submit">재검 완료 기록</button>
           </form>
