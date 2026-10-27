@@ -53,8 +53,9 @@ def ledger_page(request: Request, service: ManualDashboardService, ledger: str, 
     context = service.snapshot(stage=stage, selected_id=selected_id, query=q, kind=kind, page=page, due=due,
                                due_from=form_date(due_from), due_to=form_date(due_to), ledger=ledger,
                                positive=positive)
-    # 새 접수 폼: 조직검체 장부는 내시경(조직검사·RUT) 한 줄, 분변잠혈 대장은 Stool 1건(A22).
-    context.update(new=new, new_kind="STOOL" if ledger == "fobt" else "", notice=NOTICES.get(notice, ""),
+    # 새 접수 폼: 조직검체 장부는 내시경(조직검사·RUT) 한 줄, CLO 대장은 RUT 1건(A27), 분변잠혈 대장은 Stool 1건(A22).
+    new_kind = {"fobt": "STOOL", "clo": "CLO"}.get(ledger, "")
+    context.update(new=new, new_kind=new_kind, notice=NOTICES.get(notice, ""),
                    can_export=actor.can("excel.export"))
     # 화면에 나가기 전에 기록한다. 기록이 실패하면 화면도 나가지 않는다.
     audit(request, "LIST", "ledger_list", subjects=[c.chart_no for c in context["cases"]])
@@ -79,6 +80,13 @@ def fobt(request: Request, service: Service, stage: str = "ALL", kind: str = "AL
     positive=1이면 양성 표기 결과(CFS 권고 대상)만 본다."""
     return ledger_page(request, service, "fobt", stage, kind, selected_id, q, page, new, notice, due,
                        due_from, due_to, positive)
+
+
+@router.get("/clo")
+def clo(request: Request, service: Service, stage: str = "ALL", kind: str = "ALL",
+        selected_id: UUID | None = None, q: str = "", page: int = 1, new: bool = False, notice: str = ""):
+    """CLO 대장(A27). RUT(CLO)만 수기 엑셀과 같은 5열로 보여주며, 결과를 기록하면 종결한다."""
+    return ledger_page(request, service, "clo", stage, kind, selected_id, q, page, new, notice, "", "", "")
 
 
 @router.post("/ledger/register", dependencies=[Csrf])
@@ -163,7 +171,7 @@ def excel_page(request: Request, service: Service, token: str = "", notice: str 
         preview = service.preview(token)
         shown = [d["entry"].chart_no for d in preview["differences"]] + [m["entry"].chart_no for m in preview["missing"]]
         audit(request, "LIST", "excel_reconcile", subjects=shown)
-    context.update(token=token, preview=preview, notice=NOTICES.get(notice, ""),
+    context.update(token=token, preview=preview, notice=NOTICES.get(notice, ""), choices=service.ledger_choices(),
                    can_import=actor.can("excel.import"), can_export=actor.can("excel.export"),
                    max_upload_mb=service.max_upload_bytes // (1024 * 1024))
     return render(request, "ledger_excel.html", context)
@@ -179,13 +187,14 @@ async def import_preview(request: Request, service: Service):
     try:
         check_csrf(request, str(form.get("csrf_token", "")))
         require(request, "excel.import")
+        ledger = str(form.get("ledger", ""))
         upload = form.get("ledger_file")
         if upload is None or isinstance(upload, str):
             raise DashboardError("엑셀 파일을 선택해 주세요.", 422)
         data = await upload.read()
     finally:
         await form.close()
-    token = service.preview_import(data)
+    token = service.preview_import(data, ledger)
     audit(request, "IMPORT", "excel_preview", count=service.preview(token)["new_total"], outcome="PREVIEW")
     return redirect("/ledger/excel", token=token)
 
@@ -200,11 +209,14 @@ def import_commit(request: Request, service: Service, token: Annotated[str, Form
 
 
 @router.post("/ledger/export", dependencies=[Csrf])
-def export(request: Request, service: Service):
+def export(request: Request, service: Service, ledger: Annotated[str, Form()] = "tissue",
+           back: Annotated[str, Form()] = ""):
     require(request, "excel.export")
-    record = service.export()
+    record = service.export(ledger)
     # 출력은 한 행: 건수와 함께 남기고, 파일명·시각은 출력 기록(ledger_exports)에 있다.
     audit(request, "EXPORT", "excel_export", count=record.row_count)
+    if back == "ledger":
+        return redirect(service.ledger_path(ledger), notice="exported")
     return redirect("/ledger/excel", notice="exported")
 
 

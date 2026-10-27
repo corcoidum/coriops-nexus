@@ -1,6 +1,7 @@
 """조직검체·CLO·Stool 장부 업무 서비스. 라우트는 이 서비스만 호출한다.
 
 흐름: 접수 → 인계 대기 → 결과 대기 → 원장 지시 대기 → 재검 예정 → 종결.
+CLO는 원내 판정이라 인계가 없고, 결과를 기록하면 종결한다(A27).
 결과 설명·환자 안내는 EMR에서 관리하므로 기록하지 않는다(A12).
 저장소: 시연은 MemoryStore(합성 seed), 실사용은 PostgresStore(Alembic 스키마).
 """
@@ -27,7 +28,7 @@ from app.kernel.tasks import MemoryTaskStore, RuleBook, TaskEngine, TaskStore
 from app.kernel.web import UserError
 
 from .excel_io import (
-    PAPER_FORMS, Issue, LedgerAppConfig, LedgerReader, ParsedWorkbook, RowDraft, WorkbookError,
+    EXPORT_COLUMNS, PAPER_FORMS, Issue, LedgerAppConfig, LedgerReader, ParsedWorkbook, RowDraft, WorkbookError,
     build_followup_workbook, build_paper_workbook, build_workbook, format_sex_age,
 )
 from .ledger import save_new_workbook
@@ -135,6 +136,7 @@ class ManualDashboardService:
         self._export_dir = export_dir if export_dir is not None else os.environ.get(
             self._config.export["directory_env"], "")
         self._handoff_kinds = self._config.handoff_kinds
+        self._review_kinds = self._config.review_kinds
         self._lock = RLock()
         self._preview: _Preview | None = None
         self._store = store if store is not None else MemoryStore()
@@ -176,7 +178,7 @@ class ManualDashboardService:
         return [e.chart_no for e in self._store.entries() if e.id in wanted]
 
     def ledger_path_of(self, entry_id: UUID) -> str:
-        """그 검사가 속한 장부 화면 주소(조직검체 /dashboard, 분변잠혈 /fobt)."""
+        """그 검사가 속한 장부 화면 주소(조직검체 /dashboard, CLO /clo, 분변잠혈 /fobt)."""
         return self._config.ledger_path(self._get(entry_id).kind)
 
     def ledger_path(self, ledger: str) -> str:
@@ -201,7 +203,15 @@ class ManualDashboardService:
         return self._clock.now().astimezone(KST).date()
 
     def _stage(self, entry: LedgerEntry) -> str:
-        return entry.stage_for(self._handoff_kinds)
+        return entry.stage_for(self._handoff_kinds, self._review_kinds)
+
+    def _closed_on(self, entry: LedgerEntry) -> date | None:
+        """종결일. 원장 지시 단계가 없는 종류(CLO)는 결과 기록일이다(A27)."""
+        if entry.closed_on:
+            return entry.closed_on
+        if entry.kind not in self._review_kinds and entry.decided_at is None:
+            return entry.reported_on
+        return None
 
     def _get(self, entry_id: UUID) -> LedgerEntry:
         for entry in self._store.entries():
@@ -260,6 +270,8 @@ class ManualDashboardService:
             if left == 0:
                 return Alert("재검일 오늘", "danger")
             return Alert(f"재검 D-{left}", "warn" if left <= self._policy.followup_window_days else "normal")
+        if entry.decided_at is None and entry.kind not in self._review_kinds:
+            return Alert("결과 기록 · 종결", "normal")
         if not self._config.has_followup(entry.kind):
             return Alert(label, "warn") if positive else Alert("원장 확인", "normal")
         return Alert("재검 완료" if entry.followup_done_on else "재검 불필요", "normal")
@@ -300,14 +312,15 @@ class ManualDashboardService:
         elif stage == "DOCTOR_PENDING":
             within = 0 if entry.needs_review else 1
         elif stage == "CLOSED":
-            within = -(entry.closed_on or entry.exam_date).toordinal()
+            within = -(self._closed_on(entry) or entry.exam_date).toordinal()
         else:
             within = 0
         return (STAGE_ORDER[stage], within, entry.exam_date, entry.chart_no)
 
     def _retention(self, entries: list[LedgerEntry], today: date) -> dict:
         years = self._security.retention_years
-        expired = [e for e in entries if e.closed_on and _years_after(e.closed_on, years) < today]
+        closed = [self._closed_on(e) for e in entries]
+        expired = [day for day in closed if day and _years_after(day, years) < today]
         return {"years": years, "status": self._security.retention_status, "expired": len(expired)}
 
     @staticmethod
@@ -355,7 +368,6 @@ class ManualDashboardService:
             # 재검 날짜가 없는 장부(분변잠혈)는 재검 예정 카드·기간 필터를 쓰지 않는다(A23).
             # 이름표는 모든 단계를 남겨 둔다: 예전에 재검 날짜를 적은 Stool 행도 목록에서 읽을 수 있어야 한다.
             stage_labels = dict(STAGE_LABELS) if followup else {**STAGE_LABELS, "DOCTOR_PENDING": "원장 확인 대기"}
-            stage_cards = [key for key in STAGE_LABELS if followup or key != "FOLLOWUP"]
             stage_actions = dict(STAGE_ACTIONS) if followup else {**STAGE_ACTIONS, "DOCTOR_PENDING": "원장 확인 기록"}
             if due and not followup:
                 raise DashboardError("이 장부는 재검 기간을 쓰지 않습니다.", 422)
@@ -382,6 +394,14 @@ class ManualDashboardService:
             in_ledger = [e for e in ordered if e.kind in kinds]
             scoped = [e for e in in_ledger if kind == "ALL" or e.kind == kind]
             counts = {key: sum(stages[e.id] == key for e in scoped) for key in STAGE_LABELS}
+            # 장부에 없는 단계 카드는 숨긴다: CLO 대장은 인계·원장 지시가 없다(A27). 남은 건이 있으면 보인다.
+            has_handoff = any(k in self._handoff_kinds for k in kinds)
+            has_review = any(k in self._review_kinds for k in kinds)
+            stage_cards = [key for key in STAGE_LABELS
+                           if (followup or key != "FOLLOWUP") and (counts[key] or not (
+                               (key == "HANDOFF_PENDING" and not has_handoff)
+                               or (key == "DOCTOR_PENDING" and not has_review)))]
+            columns = meta.get("export_headers")
 
             def count(stage_key: str, test) -> int:
                 return sum(stages[e.id] == stage_key and test(e) for e in scoped)
@@ -423,9 +443,14 @@ class ManualDashboardService:
                 "kind_labels": {k: self._config.kinds[k]["label"] for k in kinds},
                 "procedure_labels": PROCEDURE_LABELS, "handoff_kinds": self._handoff_kinds,
                 "ledger": ledger, "ledger_label": self._config.ledgers[ledger]["label"],
+                "has_handoff": has_handoff, "review_kinds": self._review_kinds,
+                # 수기 엑셀과 같은 열로 보는 장부(CLO 5열). 이름은 목록이라 가린다.
+                "columns": columns, "cells": {e.id: self._cells(e, columns) for e in cases} if columns else {},
+                "can_export_ledger": self._export_prefix(ledger) is not None,
                 "total": len(in_ledger), "pickup": pickup, "handoff_defaults": self._policy.handoff_defaults,
                 "sydney_text": self._codebook.format_sydney(dict(selected.sydney)) if selected else "",
-                "delay_days": self._policy.result_delay_business_days,
+                "delay_days": (self._policy.rut_result_delay_business_days if kinds == ("CLO",)
+                               else self._policy.result_delay_business_days),
                 "window_days": self._policy.followup_window_days,
                 "retention": self._retention(stored, today), "persistent": self.persistent,
                 "export_ready": bool(self._export_dir), "exports": self._store.exports()[-3:][::-1],
@@ -436,6 +461,14 @@ class ManualDashboardService:
                             "due_from": due_from.isoformat() if due_from else "",
                             "due_to": due_to.isoformat() if due_to else ""},
             }
+
+    @staticmethod
+    def _cells(entry: LedgerEntry, columns: list[str]) -> list[str]:
+        values = []
+        for name in columns:
+            value = entry.display_name if name == "수진자명" else EXPORT_COLUMNS[name](entry)
+            values.append(value.strftime("%Y.%m.%d") if isinstance(value, date) else str(value or ""))
+        return values
 
     # ---------- 접수·인계·결과·지시
 
@@ -679,15 +712,22 @@ class ManualDashboardService:
         }
         return summary, new_rows
 
-    def preview_import(self, data: bytes) -> str:
-        """업로드 엑셀을 메모리에서 읽어 DB와 대조한다. 아무것도 저장하지 않는다."""
+    def preview_import(self, data: bytes, ledger: str = "") -> str:
+        """업로드 엑셀을 메모리에서 읽어 DB와 대조한다. 아무것도 저장하지 않는다.
+        ledger를 고르면 시트 이름과 관계없이 그 장부 파일로 읽는다(A27)."""
         with self._lock:
+            kind = None
+            if ledger:
+                kinds = self._ledger_kinds(ledger)
+                if len(kinds) != 1:
+                    raise DashboardError("시트 이름으로 구분해 올려 주세요.", 422)
+                kind = kinds[0]
             if not data:
                 raise DashboardError("엑셀 파일을 선택해 주세요.", 422)
             if len(data) > self._security.max_upload_bytes:
                 raise DashboardError("파일이 너무 큽니다. 5MB 이하로 올려 주세요.", 413)
             try:
-                parsed = self._reader.read(data, self._today())
+                parsed = self._reader.read(data, self._today(), kind)
             except WorkbookError as error:
                 raise DashboardError(str(error), 422) from None
             summary, new_rows = self._classify(parsed, self._store.entries())
@@ -753,20 +793,32 @@ class ManualDashboardService:
             raise DashboardError("클라우드 동기화 폴더에는 저장하지 않습니다.", 409)
         return resolved
 
-    def export(self) -> ExportRecord:
+    def _export_prefix(self, ledger: str) -> str | None:
+        """장부 사본 파일 이름. 분변잠혈은 종이 대장 ③ 양식으로 따로 출력하므로 없다(A22)."""
+        if ledger == "tissue":
+            return self._config.export["file_prefix"]
+        return self._config.ledgers[ledger].get("file_prefix")
+
+    def ledger_choices(self) -> dict[str, dict[str, str]]:
+        """엑셀 화면의 장부 선택지. 가져오기는 종류가 하나인 장부, 출력은 사본 양식이 있는 장부."""
+        ledgers = self._config.ledgers
+        return {"import": {n: m["label"] for n, m in ledgers.items() if len(self._config.ledger_kinds(n)) == 1},
+                "export": {n: m["label"] for n, m in ledgers.items() if self._export_prefix(n)}}
+
+    def export(self, ledger: str = "tissue") -> ExportRecord:
+        """장부 하나의 사본을 지정 폴더에 새 파일로 저장한다(조직검체, CLO 대장 A27)."""
         with self._lock:
+            kinds = self._ledger_kinds(ledger)
+            prefix = self._export_prefix(ledger)
+            if prefix is None:
+                raise DashboardError("이 장부는 종이 대장 대조 화면에서 출력합니다.", 422)
             folder = self._export_folder()
-            stored = self._store.entries()
-            if not stored:
-                raise DashboardError("출력할 장부가 없습니다.", 422)
-            # 조직검체 장부 사본이다. 분변잠혈은 종이 대장 ③ 양식으로 따로 출력한다(A22).
-            kinds = self._config.ledger_kinds("tissue")
-            stored = [e for e in stored if e.kind in kinds]
+            stored = [e for e in self._store.entries() if e.kind in kinds]
             if not stored:
                 raise DashboardError("출력할 장부가 없습니다.", 422)
             workbook = build_workbook([(e, self._stage(e)) for e in stored], self._config, self._codebook, kinds)
             now = self._clock.now()
-            name = f"{self._config.export['file_prefix']}_{now.astimezone(KST):%Y%m%d_%H%M%S}.xlsx"
+            name = f"{prefix}_{now.astimezone(KST):%Y%m%d_%H%M%S}.xlsx"
             try:
                 save_new_workbook(workbook, folder / name)  # 같은 이름이 있으면 덮어쓰지 않고 실패
             except FileExistsError:

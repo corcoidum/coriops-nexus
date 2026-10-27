@@ -74,13 +74,16 @@ class LedgerEntry:
     def needs_handoff(self, handoff_kinds: frozenset[str]) -> bool:
         return self.kind in handoff_kinds and self.entrusted_on is None
 
-    def stage_for(self, handoff_kinds: frozenset[str]) -> str:
-        """화면용 분류이며 정식 PathologyRequest 상태를 대신하지 않는다."""
+    def stage_for(self, handoff_kinds: frozenset[str], review_kinds: frozenset[str] | None = None) -> str:
+        """화면용 분류이며 정식 PathologyRequest 상태를 대신하지 않는다.
+        review_kinds에 없는 종류(CLO)는 결과를 기록하면 종결한다(A27)."""
         if self.needs_handoff(handoff_kinds):
             return "HANDOFF_PENDING"
         if self.reported_on is None:
             return "RESULT_PENDING"
         if self.decided_at is None:
+            if review_kinds is not None and self.kind not in review_kinds:
+                return "CLOSED"
             return "DOCTOR_PENDING"
         if self.followup_due is not None and self.followup_done_on is None:
             return "FOLLOWUP"

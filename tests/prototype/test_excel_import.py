@@ -86,7 +86,9 @@ def test_past_rows_skip_handoff_but_today_waits_for_handoff(service):
     assert stage(service, "H-0004") == "RESULT_PENDING"   # 10/12, 결과 없음 → 위탁된 것으로 간주
     assert stage(service, "H-0005") == "HANDOFF_PENDING"  # 오늘, 위탁일 없음
     # Stool 시트도 그대로 가져오고, 분변잠혈 대장에 보인다(A22).
-    assert service.snapshot()["flags"]["imported_pending"] == 4  # 조직 3 + CLO 1
+    assert service.snapshot()["flags"]["imported_pending"] == 3  # 조직 3
+    # CLO는 CLO 대장에 보이고, 결과가 있으면 원장 지시 없이 종결이다(A27).
+    assert service.snapshot(ledger="clo")["counts"]["CLOSED"] == 1
     assert service.snapshot(ledger="fobt")["flags"]["imported_pending"] == 1  # Stool 1
 
 

@@ -44,7 +44,7 @@ def test_ledgers_split_tissue_and_fobt(service):
     fobt = stool(service, 2)
     tissue = service.snapshot()
     fobt_view = service.snapshot(ledger="fobt")
-    assert [c.id for c in tissue["cases"]] == [biopsy] and list(tissue["kind_labels"]) == ["BIOPSY", "CLO"]
+    assert [c.id for c in tissue["cases"]] == [biopsy] and list(tissue["kind_labels"]) == ["BIOPSY"]
     assert [c.id for c in fobt_view["cases"]] == [fobt] and fobt_view["kind_labels"] == {"STOOL": "분변잠혈"}
     # 같은 씨젠 수령 때 함께 나가므로 인계 대기는 두 장부가 같은 수를 본다.
     assert tissue["pickup"]["pending_cases"] == fobt_view["pickup"]["pending_cases"] == 2
@@ -91,7 +91,7 @@ def test_tissue_copy_export_has_no_stool_sheet(service, tmp_path):
     service.register("BIOPSY", "T-0001", "테스트조직", DAY, procedure_type="stomach", specimen_count="1")
     stool(service, 2)
     record = service.export()
-    assert load_workbook(tmp_path / record.file_name).sheetnames == ["Biopsy", "CLO"]
+    assert load_workbook(tmp_path / record.file_name).sheetnames == ["Biopsy"]
 
 
 def test_paper_form_three_lists_only_stool(service):

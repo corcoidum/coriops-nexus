@@ -259,7 +259,7 @@ def test_views_changes_and_exports_are_logged_per_chart_and_chain_verifies(parts
     app, auth, logger, service = parts
     make_staff(auth, "admin1", ["ADMIN"])
     service.register("BIOPSY", "C-0001", "합성일", date(2026, 11, 5), procedure_type="colon", specimen_count="1")
-    service.register("CLO", "C-0002", "합성이", date(2026, 11, 5))
+    service.register("BIOPSY", "C-0002", "합성이", date(2026, 11, 5), procedure_type="stomach", specimen_count="1")
     with client_for(app) as client:
         login(client, "admin1")
         client.get("/dashboard")

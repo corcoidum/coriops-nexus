@@ -70,6 +70,9 @@ class LedgerAppConfig:
             raw = yaml.safe_load(source)
         if set(raw["kinds"]) != set(KINDS) or any(meta["ledger"] not in raw["ledgers"] for meta in raw["kinds"].values()):
             raise ValueError("INVALID_LEDGER_APP_CONFIG")
+        for name, meta in raw["ledgers"].items():
+            if set(meta.get("export_headers") or ()) - set(EXPORT_COLUMNS):
+                raise ValueError(f"INVALID_EXPORT_HEADERS:{name}")
         return cls(
             kinds=raw["kinds"], fields={k: tuple(v) for k, v in raw["fields"].items()},
             required_fields=tuple(raw["required_fields"]), ignored_headers=frozenset(raw["ignored_headers"]),
@@ -103,6 +106,11 @@ class LedgerAppConfig:
     @property
     def handoff_kinds(self) -> frozenset[str]:
         return frozenset(kind for kind, meta in self.kinds.items() if meta["handoff"])
+
+    @property
+    def review_kinds(self) -> frozenset[str]:
+        """결과 뒤 원장 지시(확인) 단계가 있는 종류. CLO는 없다(A27)."""
+        return frozenset(kind for kind in KINDS if self.kind_ledger(kind).get("doctor_review", True))
 
     def header_to_field(self) -> dict[str, str]:
         return {alias: name for name, aliases in self.fields.items() for alias in aliases}
@@ -215,7 +223,9 @@ class LedgerReader:
         self.config = config
         self.codebook = codebook
 
-    def read(self, data: bytes, today: date) -> ParsedWorkbook:
+    def read(self, data: bytes, today: date, kind: str | None = None) -> ParsedWorkbook:
+        """kind를 주면 시트 이름과 관계없이 모든 시트를 그 종류로 읽는다(장부별 파일, A27).
+        그때 필수 열이 없는 시트(요약표 등)는 읽지 않은 시트로만 보고한다."""
         try:
             workbook = load_workbook(BytesIO(data), read_only=True, data_only=True)
         except (zipfile.BadZipFile, KeyError, OSError, ValueError, TypeError):
@@ -224,19 +234,24 @@ class LedgerReader:
         result = ParsedWorkbook(sheets=[], issues=[], other_sheets=[])
         try:
             for worksheet in workbook.worksheets:
-                kind = sheet_kinds.get(worksheet.title.strip().casefold())
-                if kind is None:
+                sheet_kind = kind or sheet_kinds.get(worksheet.title.strip().casefold())
+                sheet = None if sheet_kind is None else self._read_sheet(
+                    worksheet, sheet_kind, today, result.issues, optional=kind is not None)
+                if sheet is None:
                     result.other_sheets.append(worksheet.title)
                     continue
-                result.sheets.append(self._read_sheet(worksheet, kind, today, result.issues))
+                result.sheets.append(sheet)
         finally:
             workbook.close()
         if not result.sheets:
-            raise WorkbookError("Biopsy·CLO·Stool 시트를 찾지 못했습니다. 시트 이름을 확인해 주세요.")
+            if kind:
+                raise WorkbookError("필수 열(검사일·차트번호·수진자명)이 있는 시트를 찾지 못했습니다. 첫 줄의 열 이름을 확인해 주세요.")
+            raise WorkbookError("Biopsy·CLO·Stool 시트를 찾지 못했습니다. 시트 이름을 확인하거나 장부 종류를 골라 주세요.")
         self._check_names_in_file(result)
         return result
 
-    def _read_sheet(self, worksheet, kind: str, today: date, issues: list[Issue]) -> SheetResult:
+    def _read_sheet(self, worksheet, kind: str, today: date, issues: list[Issue],
+                    optional: bool = False) -> SheetResult | None:
         sheet = SheetResult(kind=kind, sheet=worksheet.title)
         rows = worksheet.iter_rows(values_only=True)
         header = next(rows, ())
@@ -255,6 +270,8 @@ class LedgerReader:
         present = set(columns.values())
         missing = [FIELD_LABELS[f] for f in self.config.required_fields if f not in present]
         if missing:
+            if optional:
+                return None
             issues.extend(Issue(sheet.sheet, 0, "MISSING_HEADER", label) for label in missing)
             sheet.skipped = True
             return sheet
@@ -363,6 +380,10 @@ class LedgerReader:
             except NotationError:
                 draft.review_codes.append("SYDNEY_UNPARSED")
 
+        # 회신날짜 열이 없는 장부(CLO 대장)는 결과가 적힌 행의 결과 날짜를 검사일로 본다(A27).
+        if (draft.reported_on is None and (draft.result_code or draft.findings)
+                and self.config.kind_ledger(kind).get("result_date_default") == "exam_date"):
+            draft.reported_on = draft.exam_date
         # 과거 행은 이미 인계된 것으로 본다. 오늘 행은 위탁일이 없으면 인계 대기로 남긴다.
         if (self.config.kinds[kind]["handoff"] and draft.entrusted_on is None
                 and (draft.reported_on or draft.exam_date < today)):
@@ -418,14 +439,32 @@ def _append(sheet, values) -> None:
             cell.number_format = "yyyy.mm.dd"
 
 
+# 장부별 고정 열(config ledgers.*.export_headers)에 쓸 수 있는 열 이름과 값.
+EXPORT_COLUMNS = {
+    "검사일": lambda e: e.exam_date, "접수번호": lambda e: e.report_ref, "차트번호": lambda e: e.chart_no,
+    "수진자명": lambda e: e.patient_name, "나이": lambda e: e.age, "성별": lambda e: e.sex,
+    "CLO결과": lambda e: e.result_notation, "검사결과": lambda e: e.result_notation,
+    "결과보고일": lambda e: e.reported_on, "위탁일": lambda e: e.entrusted_on,
+}
+
+
 def build_workbook(rows: list[tuple[LedgerEntry, str]], config: LedgerAppConfig, codebook: ResultCodeBook,
                    kinds: tuple[str, ...] = KINDS) -> Workbook:
-    """DB 사본 엑셀. 종류별 시트, 기존 17열 + 재검 2열. 이 파일을 고쳐 DB로 되돌리지 않는다."""
+    """DB 사본 엑셀. 종류별 시트, 기존 17열 + 재검 2열. 수기 엑셀 열이 정해진 장부(CLO 5열, A27)는
+    그 열만 쓴다. 이 파일을 고쳐 DB로 되돌리지 않는다."""
     workbook = Workbook()
     workbook.remove(workbook.active)
     followup_headers = tuple(config.export["followup_headers"])
     for kind in kinds:
         sheet = workbook.create_sheet(config.kinds[kind]["sheet_names"][0])
+        fixed = config.kind_ledger(kind).get("export_headers")
+        if fixed:
+            _header(sheet, tuple(fixed))
+            sheet.freeze_panes = "A2"
+            for entry, _ in sorted((r for r in rows if r[0].kind == kind), key=lambda r: (r[0].exam_date, r[0].chart_no)):
+                _append(sheet, [EXPORT_COLUMNS[name](entry) for name in fixed])
+            sheet.auto_filter.ref = f"A1:{get_column_letter(len(fixed))}{max(sheet.max_row, 1)}"
+            continue
         headers = (LEDGER_HEADERS if kind == "BIOPSY" else SHORT_HEADERS) + followup_headers
         _header(sheet, headers)
         sheet.freeze_panes = "E2"
