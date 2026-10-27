@@ -46,6 +46,7 @@ button,a {
   flex-direction:column;
   padding:31px 18px;
   min-height:600px;
+  overflow-y:auto;
 }
 
 .brand {
@@ -1293,6 +1294,8 @@ input:focus,select:focus {
   --tissue-tint:#e8eefb;
   --blood:#0f8a7e;
   --blood-tint:#e3f4f1;
+  --microbiology:#8271c7;
+  --microbiology-tint:#efebfa;
 }
 
 .ledger-chip {
@@ -1316,6 +1319,23 @@ input:focus,select:focus {
   background:var(--blood-tint);
 }
 
+.ledger-chip.microbiology {
+  color:#6751a8;
+  background:var(--microbiology-tint);
+}
+
+.nav-critical { margin-top:8px; }
+.nav-critical.has-pending { color:#ffb6ad; }
+.nav-critical.has-pending.active { background:#51343e; color:#fff; }
+.nav-critical:not(.has-pending) .nav-badge { background:#405665; }
+.nav-group.microbiology { border-left-color:var(--microbiology); }
+.nav-group.microbiology .sidebar-section { color:#c6b9ef; }
+.today-card.microbiology { --c:var(--microbiology); }
+
+.paper-filters { display:flex; flex-wrap:wrap; align-items:end; gap:16px; padding:0 22px 20px; }
+.lab-paper-panel { margin-top:20px; }
+.lab-paper-table { min-width:1450px; }
+
 .nav-home {
   margin-top:28px;
 }
@@ -1325,6 +1345,7 @@ input:focus,select:focus {
   border-radius:3px;
   padding-left:4px;
   margin-top:16px;
+  flex-shrink:0;
 }
 
 .nav-group.tissue {
@@ -1337,6 +1358,9 @@ input:focus,select:focus {
 
 .nav-group .sidebar-section {
   margin:6px 12px 6px;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:1px;
 }
 
 .nav-group.tissue .sidebar-section {
@@ -1348,8 +1372,9 @@ input:focus,select:focus {
 }
 
 .nav-group .nav-item {
-  padding-top:10px;
-  padding-bottom:10px;
+  padding:10px 8px;
+  gap:8px;
+  font-size:12px;
 }
 
 .critical-alert {
@@ -1595,19 +1620,63 @@ input:focus,select:focus {
 
 .lab-row {
   display:grid;
-  grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,.8fr);
+  grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,.8fr) 38px;
   gap:6px;
   margin-bottom:6px;
   align-items:center;
 }
 
-.check-line {
-  display:flex;
-  gap:6px;
+.lab-result-form .lab-row input,
+.lab-result-form .lab-row select {
+  padding:8px;
+  min-height:40px;
+}
+
+.lab-row-remove {
+  padding:0 4px;
+  min-height:40px;
+  font-size:11px;
+}
+
+.lab-row-remove[hidden],
+.lab-add-row[hidden] {
+  display:none;
+}
+
+.lab-qual-row {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
   align-items:center;
+  gap:8px;
+  margin-bottom:8px;
+}
+
+.detail-body .lab-qual-row label {
+  margin:0;
+}
+
+.detail-body .check-line {
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
   font-size:12px;
-  margin:8px 0 4px;
+  margin:12px 0 4px;
   font-weight:400;
+}
+
+.detail-body .check-line input[type=checkbox] {
+  flex:0 0 16px;
+  width:16px;
+  height:16px;
+  min-height:16px;
+  margin:2px 0 0;
+  padding:0;
+}
+
+.check-line > span {
+  min-width:0;
+  line-height:1.6;
+  word-break:keep-all;
 }
 
 .critical-mark {

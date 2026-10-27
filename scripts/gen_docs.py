@@ -133,6 +133,7 @@ def render_fhir(y: dict, digest: str) -> str:
 
 def render(source: bytes) -> dict[str, str]:
     """파일 이름 → 내용. 같은 YAML이면 언제나 같은 결과를 낸다."""
+    source = source.replace(b"\r\n", b"\n")  # Git의 Windows 줄바꿈 변환은 내용 변경이 아니다.
     y = yaml.safe_load(source)
     digest = hashlib.sha256(source).hexdigest()
     return {

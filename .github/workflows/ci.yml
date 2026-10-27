@@ -30,6 +30,8 @@ jobs:
           --health-cmd "pg_isready -U coriops_test -d coriops_test"
           --health-interval 2s --health-timeout 3s --health-retries 30
     env:
+      CORIOPS_TEST_DATABASE_URL: postgresql+psycopg://coriops_test@127.0.0.1:5432/coriops_test
+      CORIOPS_TEST_ALLOW_RESET: '1'
       PGHOST: 127.0.0.1
       PGPORT: '5432'
       PGDATABASE: coriops_test

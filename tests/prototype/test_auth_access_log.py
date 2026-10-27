@@ -19,11 +19,11 @@ from app.main import create_app
 from app.manage import main as manage_main
 from app.modules.endoscopy_pathology.ledger_db import PostgresStore, database_url
 from app.modules.endoscopy_pathology.manual_dashboard import ManualDashboardService
-from ledger_helpers import FixedClock
+from ledger_helpers import FixedClock, biopsy_row, workbook_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
 PASSWORD = "합성-비밀번호-0001"
-ALL_TABLES = ("access_log_reviews", "access_logs", "auth_sessions", "permission_history", "staff_roles", "staff",
+ALL_TABLES = ("tasks", "rule_runs", "rules", "access_log_reviews", "access_logs", "auth_sessions", "permission_history", "staff_roles", "staff",
               "followups", "doctor_reviews", "exam_results", "specimens", "exams", "patients", "ledger_exports",
               "ledger_import_batches", "ledger_handoffs")
 
@@ -89,6 +89,86 @@ def csrf(client) -> str:
 def logs(engine):
     with engine.connect() as connection:
         return connection.execute(select(access_logs).order_by(access_logs.c.sequence_no)).all()
+
+
+@pytest.mark.parametrize("operation,target", [
+    ("register", "ledger_entry"), ("handoff", "ledger_handoff"), ("receive", "ledger_result"),
+    ("decide", "ledger_decision"), ("bulk", "ledger_decision_bulk"), ("followup", "ledger_followup"),
+    ("import", "excel_commit"), ("export", "excel_export"), ("export_followups", "followup_list"),
+    ("export_paper", "paper_ledger"),
+])
+def test_audit_failure_rolls_back_business_tasks_and_outputs(parts, clean, tmp_path, monkeypatch, operation, target):
+    app, auth, logger, service = parts
+    make_staff(auth, "atomicdoctor", ["DOCTOR"])
+    day = date(2026, 11, 5)
+    entry_ids = []
+    if operation not in {"register", "import"}:
+        count = 2 if operation == "bulk" else 1
+        for index in range(count):
+            entry_ids.append(service.register("BIOPSY", f"T-94{index:02}", "테스트원자성", day,
+                                               procedure_type="stomach", specimen_count="1"))
+        if operation not in {"handoff", "export", "export_paper"}:
+            service.handoff("테스트접수", "테스트인계", "테스트수령", count)
+        if operation in {"decide", "bulk", "followup", "export_followups"}:
+            for index, entry_id in enumerate(entry_ids):
+                service.receive(entry_id, f"T94000{index}", "H#1", "합성 위치")
+        if operation in {"followup", "export_followups"}:
+            service.decide(entry_ids[0], "required", date(2026, 11, 20), actor="atomicdoctor")
+    token = None
+    if operation == "import":
+        content = workbook_bytes(biopsy=[biopsy_row(day, "T9499999", "T-9499", "테스트가져오기")])
+        token = service.preview_import(content)
+    paths = {
+        "register": ("/ledger/register", {"kind": "BIOPSY", "chart_no": "T-9498", "patient_name": "테스트신규",
+                                         "exam_date": day.isoformat(), "procedure_type": "stomach", "specimen_count": "1"}),
+        "handoff": ("/ledger/handoff", {"registered_by": "테스트접수", "handed_by": "테스트인계",
+                                        "receiver_name": "테스트수령", "confirmed_count": "1"}),
+        "bulk": ("/ledger/bulk-decide", {"entry_ids": [str(i) for i in entry_ids], "reason": "합성 원장 지시"}),
+        "import": ("/ledger/import/commit", {"token": token}),
+        "export": ("/ledger/export", {}),
+        "export_followups": ("/ledger/export/followups", {}),
+        "export_paper": ("/ledger/paper/export", {}),
+    }
+    if operation in {"receive", "decide", "followup"}:
+        action, data = {
+            "receive": ("receive", {"report_ref": "T9499998", "result_notation": "H#1", "site_summary": "합성 위치"}),
+            "decide": ("decide", {"mode": "not_required", "reason": "합성 원장 지시"}),
+            "followup": ("followup-done", {"done_on": day.isoformat()}),
+        }[operation]
+        paths[operation] = (f"/ledger/cases/{entry_ids[0]}/{action}", data)
+    before_entries = {e.id: e for e in service._store.entries()}
+    before_tasks = service.tasks.store.tasks()
+    before_runs = service.tasks.store.runs()
+    original = logger.record
+    failing = True
+
+    def fail_after_record(**kwargs):
+        original(**kwargs)
+        if failing and kwargs["target_type"] == target:
+            raise RuntimeError("SYNTHETIC_AUDIT_FAILURE")
+
+    monkeypatch.setattr(logger, "record", fail_after_record)
+    with TestClient(app, base_url="https://testserver", client=OFFICE_PC, raise_server_exceptions=False) as client:
+        assert login(client, "atomicdoctor").status_code == 303
+        csrf_token = csrf(client)
+        before_logs = len(logs(clean))
+        path, data = paths[operation]
+        response = client.post(path, data={"csrf_token": csrf_token, **data}, follow_redirects=False)
+        assert response.status_code == 500
+        assert {e.id: e for e in service._store.entries()} == before_entries
+        assert service.tasks.store.tasks() == before_tasks
+        assert service.tasks.store.runs() == before_runs
+        assert service._store.exports() == [] and list(tmp_path.glob("*.xlsx")) == []
+        assert len(logs(clean)) == before_logs and logger.verify()["ok"]
+        if token is not None:
+            assert service.preview(token)["new_total"] == 1
+            assert service._store.imports() == []
+        # rollback 뒤 같은 입력으로 다시 시도할 수 있어야 한다(미리보기·파일명·규칙 ID 포함).
+        failing = False
+        retried = client.post(path, data={"csrf_token": csrf_token, **data}, follow_redirects=False)
+        assert retried.status_code == 303
+        assert logger.verify()["ok"] and len(logs(clean)) > before_logs
+        assert service.tasks.store.runs()[-1].status == "SUCCEEDED"
 
 
 # ---------- 스키마·추가 전용
@@ -383,7 +463,8 @@ def test_manage_cli_creates_the_first_officer_with_forced_change(clean):
                        read_password=lambda _: next(mismatch)) == 2
 
 
-def test_memory_demo_keeps_working_without_login():
+def test_memory_demo_keeps_working_without_login(monkeypatch):
+    monkeypatch.delenv("CORIOPS_DATABASE_URL", raising=False)
     app = create_app()
     with TestClient(app) as client:
         assert client.get("/dashboard").status_code == 200
@@ -400,6 +481,8 @@ def test_lab_demo_tab_is_not_mounted_in_db_mode(parts):
         login(client, "admin1")
         assert 'href="/lab"' not in client.get("/dashboard").text
         assert client.get("/lab").status_code == 404
+        assert client.get("/lab/paper").status_code == 404
+        assert client.get("/critical").status_code == 404
         # 첫 화면에는 조직검체 카드만 있고 위급치 알림도 없다.
         home = client.get("/").text
         assert "오늘 할 일" in home and "조직검체 장부 열기" in home

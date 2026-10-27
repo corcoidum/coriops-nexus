@@ -125,6 +125,25 @@ def test_reconcile_reports_differences_and_db_only_rows(service):
     assert by_chart(service, "H-0001").result_notation == "TA#2(L), H#1"  # 덮어쓰지 않음
 
 
+@pytest.mark.parametrize("changes", [
+    {"chart": "T-9102", "name": "테스트다른환자"},
+    {"day": date(2026, 10, 3)},
+    {"kind": "colon"},
+])
+def test_receipt_number_cannot_match_a_different_patient_or_exam(service, changes):
+    original = {"day": date(2026, 10, 2), "ref": "T9100001", "chart": "T-9101", "name": "테스트대조",
+                "reported": date(2026, 10, 5), "kind": "stomach"}
+    service.commit_import(service.preview_import(workbook_bytes(biopsy=[biopsy_row(**original)])))
+    token = service.preview_import(workbook_bytes(biopsy=[biopsy_row(**{**original, **changes})]))
+    summary = service.preview(token)
+    counts = summary["sheets"][0]["counts"]
+    assert (counts["new"], counts["same"], counts["different"], counts["invalid"]) == (0, 0, 0, 1)
+    assert any(issue.code == "IDENTITY_MISMATCH" for issue in summary["issues"])
+    assert len(service._store.entries()) == 1
+    with pytest.raises(DashboardError):
+        service.commit_import(token)
+
+
 def test_manual_entry_without_report_ref_matches_excel_row_by_chart_and_date(service):
     entry_id = service.register("BIOPSY", "H-0101", "수기환자", date(2026, 10, 30), procedure_type="colon",
                                 specimen_count="1")

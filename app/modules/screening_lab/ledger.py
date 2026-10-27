@@ -97,6 +97,10 @@ class LabLedgerPolicy:
     def result_text(self, record: LabRecord) -> str | None:
         return format_result(record.items, self.normal_label, self.qualitative_names, record.received)
 
+    def row_values(self, record: LabRecord) -> tuple[object, ...]:
+        """엑셀과 종이대장 대조 화면에서 같은 열 순서·결과 표기를 쓴다."""
+        return tuple(_cell_value(record, column, self) for column in self.columns)
+
 
 @dataclass(frozen=True)
 class ReviewIssue:
