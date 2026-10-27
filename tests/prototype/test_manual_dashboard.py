@@ -573,7 +573,8 @@ def test_links_on_the_page_keep_the_current_view_and_open(client):
 
     page = client.get("/dashboard?stage=RESULT_PENDING&kind=BIOPSY").text
     links = {html.unescape(h) for h in re.findall(r'href="(/dashboard\?[^"]+)"', page)}
-    assert "/dashboard?stage=RESULT_PENDING&kind=CLO" in links
+    # 대장 탭은 단계 선택을 풀고 그 대장 전체로 간다(CLO에는 없는 단계가 있다, A18).
+    assert "/dashboard?stage=ALL&kind=CLO" in links
     assert any("stage=RESULT_PENDING&kind=BIOPSY&selected_id=" in h for h in links)
     for href in links:
         assert client.get(href).status_code == 200, href

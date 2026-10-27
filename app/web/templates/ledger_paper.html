@@ -1,7 +1,6 @@
 {% extends "ledger_base.html" %}
 {% block content %}
     <div class="page-heading"><div><span class="eyebrow">PAPER LEDGER</span><h1>종이 대장 대조</h1><p>원내 종이 대장과 같은 열 순서로 보여줍니다. 한 줄씩 맞춰 보고, 필요하면 같은 양식으로 지정 폴더에 출력합니다.</p></div></div>
-    {% if notice %}<p class="notice" role="status">✓ {{ notice }}</p>{% endif %}
 
     <nav class="kind-tabs" aria-label="종이 대장">
       {% for key, spec in forms.items() %}<a href="/ledger/paper?form={{ key }}&amp;date_from={{ start.isoformat() }}&amp;date_to={{ end.isoformat() }}" class="{% if key == form %}active{% endif %}">{{ spec.short }}</a>{% endfor %}

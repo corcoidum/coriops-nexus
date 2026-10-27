@@ -10,6 +10,11 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <label for="ledger_file">엑셀 파일(.xlsx, {{ max_upload_mb }}MB 이하)</label>
           <input id="ledger_file" name="ledger_file" type="file" accept=".xlsx" required>
+          <label for="ledger_kind">대장 종류</label>
+          <select id="ledger_kind" name="ledger_kind">
+            <option value="">자동 — 시트 이름(Biopsy·CLO·Stool)으로 구분</option>
+            {% for key, label in ledger_labels.items() %}<option value="{{ key }}">{{ label }} 파일 (모든 시트를 이 대장으로)</option>{% endfor %}
+          </select>
           <p class="field-help">파일은 메모리에서만 읽고 서버에 저장하지 않습니다. 암호가 걸린 파일은 원내 PC에서 해제한 사본을 올립니다. 비고란은 저장하지 않습니다.</p>
           <button class="button primary full" type="submit">미리보기·대조</button>
         </form>{% else %}<p class="alert-chip warn">가져오기 권한이 없습니다(원무·원장).</p>{% endif %}

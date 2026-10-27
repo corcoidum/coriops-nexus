@@ -1,13 +1,22 @@
 version: '0.3-prototype'
 # 원장 결재·2단계 보안 조치(docs/privacy/internal-security-proposal.md) 전에는 실제 환자 자료를 넣지 않는다.
 status: REQUIRES_OWNER_APPROVAL_BEFORE_REAL_DATA
-# 장부 종류. 시트 이름은 기존 엑셀 파일의 탭 이름이다.
+# 장부 종류. 대장마다 메뉴·엑셀 출력을 따로 둔다(A18). 시트 이름은 기존 엑셀 파일의 탭 이름이다.
+# - ledger: 메뉴·출력 이름, file_prefix: 대장별 출력 파일 이름
+# - doctor_review: 결과 뒤 원장 지시(재검 여부) 단계가 있는가. false면 결과를 기록하면 종결한다
+# - export_headers: 대장별 엑셀 출력 열. 없으면 공통 양식(조직검사 17열, 그 밖 12열 + 재검 2열)
 kinds:
-  BIOPSY: {label: 조직검사, sheet_names: [Biopsy, 조직검체장부], handoff: true, result_format: codes}
-  # CLO = 종이 검체 관리 장부의 RUT. 원내 판정이라 수탁기관 인계가 없다(A15에서 확인).
-  CLO: {label: RUT(CLO), sheet_names: [CLO], handoff: false, result_format: short}
-  # Stool은 씨젠에 당일 인수·당일 인계한다(A16에서 확인).
-  STOOL: {label: Stool, sheet_names: [Stool], handoff: true, result_format: short}
+  BIOPSY: {label: 조직검사, ledger: 조직검체 대장, file_prefix: 조직검체대장, sheet_names: [Biopsy, 조직검체장부],
+           handoff: true, doctor_review: true, result_format: codes}
+  # CLO = 종이 검체 관리 장부의 RUT. 원내 판정이라 수탁기관 인계가 없다(A15).
+  # 수기 엑셀 CLO 대장은 5열이며 회신날짜가 없어, 결과가 적힌 행의 결과 날짜는 검사일로 본다.
+  # 결과를 기록하면 종결한다. 제균치료·재검 판단은 EMR에서 한다(A18).
+  CLO: {label: RUT(CLO), ledger: CLO 대장, file_prefix: CLO대장, sheet_names: [CLO], handoff: false,
+        doctor_review: false, result_format: short, result_date_default: exam_date,
+        export_headers: [검사일, 차트번호, 수진자명, 성별, CLO결과]}
+  # Stool은 씨젠에 당일 인수·당일 인계한다(A16). 원장 지시 단계는 [가정]이며 분변 대장 양식 확인 때 함께 정한다.
+  STOOL: {label: Stool, ledger: 분변 대장, file_prefix: 분변대장, sheet_names: [Stool], handoff: true,
+          doctor_review: true, result_format: short}
 # 엑셀 헤더 → 저장 필드. 세 시트가 같은 사전을 쓴다. 헤더 이름이 다르면 여기에 별칭을 추가한다.
 fields:
   exam_date: [검사일, 시행날짜]
@@ -24,7 +33,7 @@ fields:
   handed_by: [인계인]
   received_by: [인수인, 수령인]
   reported_on: [결과보고일, 회신날짜]
-  result: [조직검사결과, 검사결과, 결과]
+  result: [조직검사결과, 검사결과, 결과, CLO결과]
   sydney: [특이소견]
 required_fields: [exam_date, chart_no, patient_name]
 # 값을 저장·표시하지 않는 열(헤더 이름만 보고에 표시)

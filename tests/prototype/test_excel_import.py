@@ -85,7 +85,7 @@ def test_past_rows_skip_handoff_but_today_waits_for_handoff(service):
 
     assert stage(service, "H-0004") == "RESULT_PENDING"   # 10/12, 결과 없음 → 위탁된 것으로 간주
     assert stage(service, "H-0005") == "HANDOFF_PENDING"  # 오늘, 위탁일 없음
-    assert service.snapshot()["flags"]["imported_pending"] == 5  # 조직 3 + CLO 1 + Stool 1
+    assert service.snapshot()["flags"]["imported_pending"] == 4  # 조직 3 + Stool 1. CLO는 결과 기록으로 종결(A18)
 
 
 def test_same_file_again_is_all_same_and_cannot_commit(service):

@@ -67,17 +67,33 @@ class LedgerAppConfig:
             raw = yaml.safe_load(source)
         if set(raw["kinds"]) != set(KINDS):
             raise ValueError("INVALID_LEDGER_APP_CONFIG")
-        return cls(
+        config = cls(
             kinds=raw["kinds"], fields={k: tuple(v) for k, v in raw["fields"].items()},
             required_fields=tuple(raw["required_fields"]), ignored_headers=frozenset(raw["ignored_headers"]),
             procedure_types=raw["procedure_types"], sexes=raw["sexes"],
             short_result_pattern=re.compile(raw["short_result_pattern"]),
             max_rows_per_sheet=int(raw["max_rows_per_sheet"]), export=raw["export"],
         )
+        config.check_export_headers()
+        return config
 
     @property
     def handoff_kinds(self) -> frozenset[str]:
         return frozenset(kind for kind, meta in self.kinds.items() if meta["handoff"])
+
+    def check_export_headers(self) -> None:
+        for kind, meta in self.kinds.items():
+            unknown = set(meta.get("export_headers") or ()) - set(EXPORT_COLUMNS)
+            if unknown:
+                raise ValueError(f"INVALID_EXPORT_HEADERS:{kind}")
+
+    @property
+    def review_kinds(self) -> frozenset[str]:
+        """결과 뒤 원장 지시 단계가 있는 종류(A18: CLO는 없음)."""
+        return frozenset(kind for kind, meta in self.kinds.items() if meta["doctor_review"])
+
+    def ledger_labels(self) -> dict[str, str]:
+        return {kind: self.kinds[kind]["ledger"] for kind in KINDS}
 
     def header_to_field(self) -> dict[str, str]:
         return {alias: name for name, aliases in self.fields.items() for alias in aliases}
@@ -190,7 +206,9 @@ class LedgerReader:
         self.config = config
         self.codebook = codebook
 
-    def read(self, data: bytes, today: date) -> ParsedWorkbook:
+    def read(self, data: bytes, today: date, kind: str | None = None) -> ParsedWorkbook:
+        """kind를 주면 시트 이름과 관계없이 모든 시트를 그 대장으로 읽는다(대장별 파일, A18).
+        필수 열이 없는 시트(요약표 등)는 건너뛴 시트로만 보고한다."""
         try:
             workbook = load_workbook(BytesIO(data), read_only=True, data_only=True)
         except (zipfile.BadZipFile, KeyError, OSError, ValueError, TypeError):
@@ -199,19 +217,26 @@ class LedgerReader:
         result = ParsedWorkbook(sheets=[], issues=[], other_sheets=[])
         try:
             for worksheet in workbook.worksheets:
-                kind = sheet_kinds.get(worksheet.title.strip().casefold())
-                if kind is None:
+                sheet_kind = kind or sheet_kinds.get(worksheet.title.strip().casefold())
+                if sheet_kind is None:
                     result.other_sheets.append(worksheet.title)
                     continue
-                result.sheets.append(self._read_sheet(worksheet, kind, today, result.issues))
+                sheet = self._read_sheet(worksheet, sheet_kind, today, result.issues, optional=kind is not None)
+                if sheet is None:
+                    result.other_sheets.append(worksheet.title)
+                    continue
+                result.sheets.append(sheet)
         finally:
             workbook.close()
         if not result.sheets:
-            raise WorkbookError("Biopsy·CLO·Stool 시트를 찾지 못했습니다. 시트 이름을 확인해 주세요.")
+            if kind:
+                raise WorkbookError("필수 열(검사일·차트번호·수진자명)이 있는 시트를 찾지 못했습니다. 첫 줄의 열 이름을 확인해 주세요.")
+            raise WorkbookError("Biopsy·CLO·Stool 시트를 찾지 못했습니다. 시트 이름을 확인하거나 대장 종류를 골라 주세요.")
         self._check_names_in_file(result)
         return result
 
-    def _read_sheet(self, worksheet, kind: str, today: date, issues: list[Issue]) -> SheetResult:
+    def _read_sheet(self, worksheet, kind: str, today: date, issues: list[Issue],
+                    optional: bool = False) -> SheetResult | None:
         sheet = SheetResult(kind=kind, sheet=worksheet.title)
         rows = worksheet.iter_rows(values_only=True)
         header = next(rows, ())
@@ -230,6 +255,8 @@ class LedgerReader:
         present = set(columns.values())
         missing = [FIELD_LABELS[f] for f in self.config.required_fields if f not in present]
         if missing:
+            if optional:
+                return None
             issues.extend(Issue(sheet.sheet, 0, "MISSING_HEADER", label) for label in missing)
             sheet.skipped = True
             return sheet
@@ -338,6 +365,10 @@ class LedgerReader:
             except NotationError:
                 draft.review_codes.append("SYDNEY_UNPARSED")
 
+        # CLO 대장처럼 회신날짜 열이 없는 대장은 결과가 적힌 행의 결과 날짜를 검사일로 본다(A18).
+        if (draft.reported_on is None and (draft.result_code or draft.findings)
+                and self.config.kinds[kind].get("result_date_default") == "exam_date"):
+            draft.reported_on = draft.exam_date
         # 과거 행은 이미 인계된 것으로 본다. 오늘 행은 위탁일이 없으면 인계 대기로 남긴다.
         if (self.config.kinds[kind]["handoff"] and draft.entrusted_on is None
                 and (draft.reported_on or draft.exam_date < today)):
@@ -393,13 +424,32 @@ def _append(sheet, values) -> None:
             cell.number_format = "yyyy.mm.dd"
 
 
-def build_workbook(rows: list[tuple[LedgerEntry, str]], config: LedgerAppConfig, codebook: ResultCodeBook) -> Workbook:
-    """DB 사본 엑셀. 종류별 시트, 기존 17열 + 재검 2열. 이 파일을 고쳐 DB로 되돌리지 않는다."""
+# 대장별 출력 열(config kinds.*.export_headers)에 쓸 수 있는 열 이름과 값.
+EXPORT_COLUMNS = {
+    "검사일": lambda e: e.exam_date, "접수번호": lambda e: e.report_ref, "차트번호": lambda e: e.chart_no,
+    "수진자명": lambda e: e.patient_name, "나이": lambda e: e.age, "성별": lambda e: e.sex,
+    "CLO결과": lambda e: e.result_notation, "검사결과": lambda e: e.result_notation,
+    "결과보고일": lambda e: e.reported_on, "위탁일": lambda e: e.entrusted_on,
+}
+
+
+def build_workbook(rows: list[tuple[LedgerEntry, str]], config: LedgerAppConfig, codebook: ResultCodeBook,
+                   kinds: tuple[str, ...] = KINDS) -> Workbook:
+    """DB 사본 엑셀. 대장별 시트. 수기 엑셀과 같은 열이 정해진 대장(CLO 5열, A18)은 그 열만, 나머지는
+    공통 양식(조직검사 17열, 그 밖 12열) + 재검 2열. 이 파일을 고쳐 DB로 되돌리지 않는다."""
     workbook = Workbook()
     workbook.remove(workbook.active)
     followup_headers = tuple(config.export["followup_headers"])
-    for kind in KINDS:
+    for kind in kinds:
         sheet = workbook.create_sheet(config.kinds[kind]["sheet_names"][0])
+        fixed = config.kinds[kind].get("export_headers")
+        if fixed:
+            _header(sheet, tuple(fixed))
+            sheet.freeze_panes = "A2"
+            for entry, _ in sorted((r for r in rows if r[0].kind == kind), key=lambda r: (r[0].exam_date, r[0].chart_no)):
+                _append(sheet, [EXPORT_COLUMNS[name](entry) for name in fixed])
+            sheet.auto_filter.ref = f"A1:{get_column_letter(len(fixed))}{max(sheet.max_row, 1)}"
+            continue
         headers = (LEDGER_HEADERS if kind == "BIOPSY" else SHORT_HEADERS) + followup_headers
         _header(sheet, headers)
         sheet.freeze_panes = "E2"

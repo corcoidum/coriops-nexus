@@ -165,13 +165,14 @@ async def import_preview(request: Request, service: Service):
     try:
         check_csrf(request, str(form.get("csrf_token", "")))
         require(request, "excel.import")
+        ledger_kind = str(form.get("ledger_kind", ""))
         upload = form.get("ledger_file")
         if upload is None or isinstance(upload, str):
             raise DashboardError("엑셀 파일을 선택해 주세요.", 422)
         data = await upload.read()
     finally:
         await form.close()
-    token = service.preview_import(data)
+    token = service.preview_import(data, ledger_kind)
     audit(request, "IMPORT", "excel_preview", count=service.preview(token)["new_total"], outcome="PREVIEW")
     return redirect("/ledger/excel", token=token)
 
@@ -186,11 +187,14 @@ def import_commit(request: Request, service: Service, token: Annotated[str, Form
 
 
 @router.post("/ledger/export", dependencies=[Csrf])
-def export(request: Request, service: Service):
+def export(request: Request, service: Service, kind: Annotated[str, Form()] = "",
+           back: Annotated[str, Form()] = ""):
     require(request, "excel.export")
-    record = service.export()
+    record = service.export(kind)
     # 출력은 한 행: 건수와 함께 남기고, 파일명·시각은 출력 기록(ledger_exports)에 있다.
     audit(request, "EXPORT", "excel_export", count=record.row_count)
+    if back == "ledger" and kind:
+        return redirect(kind=kind, notice="exported")
     return redirect("/ledger/excel", notice="exported")
 
 

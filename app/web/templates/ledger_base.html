@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>조직검체 장부 · CoriOps Nexus</title>
+  <title>검체 장부 · CoriOps Nexus</title>
   <link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
@@ -12,7 +12,9 @@
   <a class="brand" href="/dashboard"><span class="brand-mark">C</span><span>CoriOps<span class="brand-sub">NEXUS</span></span></a>
   <div class="sidebar-section">WORKSPACE</div>
   {% if actor and actor.can('ledger.view') %}
-  <a class="nav-item {% if nav == '/dashboard' and stage != 'FOLLOWUP' %}active{% endif %}" href="/dashboard"><span aria-hidden="true">▦</span> 조직검체 장부</a>
+  {% set ledger_nav = [('BIOPSY', '조직검체 대장'), ('CLO', 'CLO 대장'), ('STOOL', '분변 대장')] %}
+  <a class="nav-item {% if nav == '/dashboard' and stage != 'FOLLOWUP' and kind == 'ALL' %}active{% endif %}" href="/dashboard"><span aria-hidden="true">▦</span> 전체 현황</a>
+  {% for key, label in ledger_nav %}<a class="nav-item sub {% if nav == '/dashboard' and stage != 'FOLLOWUP' and kind == key %}active{% endif %}" href="/dashboard?kind={{ key }}"><span aria-hidden="true">·</span> {{ label }}</a>{% endfor %}
   <a class="nav-item {% if nav == '/dashboard' and stage == 'FOLLOWUP' and due == 'due' %}active{% endif %}" href="/dashboard?stage=FOLLOWUP&amp;due=due"><span aria-hidden="true">⚑</span> 재검 도래{% if flags is defined and flags.followup_due %} <span class="nav-badge">{{ flags.followup_due }}</span>{% endif %}</a>
   <a class="nav-item {% if nav == '/dashboard' and stage == 'FOLLOWUP' and due != 'due' %}active{% endif %}" href="/dashboard?stage=FOLLOWUP"><span aria-hidden="true">◷</span> 재검 대상</a>
   <a class="nav-item {% if nav == '/ledger/paper' %}active{% endif %}" href="/ledger/paper"><span aria-hidden="true">▤</span> 종이 대장 대조</a>
@@ -33,7 +35,7 @@
   </div>
 </aside>
 <main class="workspace">
-  <header class="topbar"><span>진료 지원 <span class="breadcrumb">/</span> {% block crumb %}조직검체 장부{% endblock %}</span><span class="date">{% if today %}{{ today.strftime('%Y.%m.%d') }}{% endif %}</span></header>
+  <header class="topbar"><span>진료 지원 <span class="breadcrumb">/</span> {% block crumb %}검체 장부{% endblock %}</span><span class="date">{% if today %}{{ today.strftime('%Y.%m.%d') }}{% endif %}</span></header>
   <div class="page-body">
     {% if persistent is defined %}{% if persistent %}
     <div class="demo-banner"><strong>DB 저장 모드</strong><span>입력은 PostgreSQL에 저장되고 조회·변경은 접속기록에 남습니다. 원장 결재 전에는 합성 자료로만 시험합니다.</span></div>
@@ -42,7 +44,7 @@
     {% endif %}{% endif %}
     {% if notice %}<div class="notice" role="status">✓ {{ notice }}</div>{% endif %}
 {% block content %}{% endblock %}
-    <footer class="page-footer"><span>CoriOps Nexus <span class="footer-dot">·</span> 조직검체 장부</span><span>접수 → 인계 → 결과 → 원장 지시 → 재검</span></footer>
+    <footer class="page-footer"><span>CoriOps Nexus <span class="footer-dot">·</span> 검체 장부(조직검체·CLO·분변)</span><span>접수 → 인계 → 결과 → 원장 지시 → 재검</span></footer>
   </div>
 </main>
 </body>

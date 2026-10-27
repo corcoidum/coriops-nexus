@@ -135,6 +135,7 @@ class ManualDashboardService:
         self._export_dir = export_dir if export_dir is not None else os.environ.get(
             self._config.export["directory_env"], "")
         self._handoff_kinds = self._config.handoff_kinds
+        self._review_kinds = self._config.review_kinds
         self._lock = RLock()
         self._preview: _Preview | None = None
         self._store = store if store is not None else MemoryStore()
@@ -188,7 +189,15 @@ class ManualDashboardService:
         return self._clock.now().astimezone(KST).date()
 
     def _stage(self, entry: LedgerEntry) -> str:
-        return entry.stage_for(self._handoff_kinds)
+        return entry.stage_for(self._handoff_kinds, self._review_kinds)
+
+    def _closed_on(self, entry: LedgerEntry) -> date | None:
+        """종결일. 원장 지시 단계가 없는 종류(CLO)는 결과 기록일이다(A18)."""
+        if entry.closed_on:
+            return entry.closed_on
+        if entry.kind not in self._review_kinds and entry.decided_at is None and entry.reported_on:
+            return entry.reported_on
+        return None
 
     def _get(self, entry_id: UUID) -> LedgerEntry:
         for entry in self._store.entries():
@@ -243,6 +252,8 @@ class ManualDashboardService:
             if left == 0:
                 return Alert("재검일 오늘", "danger")
             return Alert(f"재검 D-{left}", "warn" if left <= self._policy.followup_window_days else "normal")
+        if entry.decided_at is None and entry.kind not in self._review_kinds:
+            return Alert("결과 기록 · 종결", "normal")
         return Alert("재검 완료" if entry.followup_done_on else "재검 불필요", "normal")
 
     def _pickup(self, today: date, now: datetime, pending: list[LedgerEntry]) -> dict:
@@ -281,14 +292,14 @@ class ManualDashboardService:
         elif stage == "DOCTOR_PENDING":
             within = 0 if entry.needs_review else 1
         elif stage == "CLOSED":
-            within = -(entry.closed_on or entry.exam_date).toordinal()
+            within = -(self._closed_on(entry) or entry.exam_date).toordinal()
         else:
             within = 0
         return (STAGE_ORDER[stage], within, entry.exam_date, entry.chart_no)
 
     def _retention(self, entries: list[LedgerEntry], today: date) -> dict:
         years = self._security.retention_years
-        expired = [e for e in entries if e.closed_on and _years_after(e.closed_on, years) < today]
+        expired = [e for e in entries if self._closed_on(e) and _years_after(self._closed_on(e), years) < today]
         return {"years": years, "status": self._security.retention_status, "expired": len(expired)}
 
     @staticmethod
@@ -360,6 +371,10 @@ class ManualDashboardService:
                 "followup_overdue": count("FOLLOWUP", lambda e: e.followup_due < today),
                 "followup_soon": count("FOLLOWUP", lambda e: alerts[e.id].level == "warn"),
             }
+            # 대장 하나를 볼 때는 그 대장에 없는 단계(CLO의 인계·원장 지시·재검)는 숨긴다. 남은 건이 있으면 보인다(A18).
+            visible = [key for key in STAGE_LABELS if kind == "ALL" or counts[key] or not (
+                (key == "HANDOFF_PENDING" and kind not in self._handoff_kinds)
+                or (key in ("DOCTOR_PENDING", "FOLLOWUP") and kind not in self._review_kinds))]
             window = self.due_window(due, today, due_from, due_to)
             if due:
                 matched = self._followups(stored, kind, query, window)
@@ -381,10 +396,13 @@ class ManualDashboardService:
                 "selected": selected, "today": today, "stage": stage, "query": query, "kind": kind,
                 "stage_labels": STAGE_LABELS, "stage_actions": STAGE_ACTIONS,
                 "kind_labels": {k: self._config.kinds[k]["label"] for k in KINDS},
+                "ledger_labels": self._config.ledger_labels(), "review_kinds": self._review_kinds,
+                "visible_stages": visible,
                 "procedure_labels": PROCEDURE_LABELS, "handoff_kinds": self._handoff_kinds,
                 "total": len(stored), "pickup": pickup, "handoff_defaults": self._policy.handoff_defaults,
                 "sydney_text": self._codebook.format_sydney(dict(selected.sydney)) if selected else "",
-                "delay_days": self._policy.result_delay_business_days,
+                "delay_days": (self._policy.rut_result_delay_business_days if kind == "CLO"
+                               else self._policy.result_delay_business_days),
                 "window_days": self._policy.followup_window_days,
                 "retention": self._retention(stored, today), "persistent": self.persistent,
                 "export_ready": bool(self._export_dir), "exports": self._store.exports()[-3:][::-1],
@@ -629,15 +647,18 @@ class ManualDashboardService:
         }
         return summary, new_rows
 
-    def preview_import(self, data: bytes) -> str:
-        """업로드 엑셀을 메모리에서 읽어 DB와 대조한다. 아무것도 저장하지 않는다."""
+    def preview_import(self, data: bytes, kind: str = "") -> str:
+        """업로드 엑셀을 메모리에서 읽어 DB와 대조한다. 아무것도 저장하지 않는다.
+        kind를 고르면 시트 이름과 관계없이 그 대장 파일로 읽는다(A18)."""
         with self._lock:
+            if kind and kind not in KINDS:
+                raise DashboardError("알 수 없는 대장입니다.", 422)
             if not data:
                 raise DashboardError("엑셀 파일을 선택해 주세요.", 422)
             if len(data) > self._security.max_upload_bytes:
                 raise DashboardError("파일이 너무 큽니다. 5MB 이하로 올려 주세요.", 413)
             try:
-                parsed = self._reader.read(data, self._today())
+                parsed = self._reader.read(data, self._today(), kind or None)
             except WorkbookError as error:
                 raise DashboardError(str(error), 422) from None
             summary, new_rows = self._classify(parsed, self._store.entries())
@@ -703,15 +724,20 @@ class ManualDashboardService:
             raise DashboardError("클라우드 동기화 폴더에는 저장하지 않습니다.", 409)
         return resolved
 
-    def export(self) -> ExportRecord:
+    def export(self, kind: str = "") -> ExportRecord:
+        """전체(대장 3시트) 또는 대장 하나만 지정 폴더에 새 파일로 저장한다(A18)."""
         with self._lock:
+            if kind and kind not in KINDS:
+                raise DashboardError("알 수 없는 대장입니다.", 422)
             folder = self._export_folder()
-            stored = self._store.entries()
+            stored = [e for e in self._store.entries() if not kind or e.kind == kind]
             if not stored:
                 raise DashboardError("출력할 장부가 없습니다.", 422)
-            workbook = build_workbook([(e, self._stage(e)) for e in stored], self._config, self._codebook)
+            workbook = build_workbook([(e, self._stage(e)) for e in stored], self._config, self._codebook,
+                                      (kind,) if kind else KINDS)
             now = self._clock.now()
-            name = f"{self._config.export['file_prefix']}_{now.astimezone(KST):%Y%m%d_%H%M%S}.xlsx"
+            prefix = self._config.kinds[kind]["file_prefix"] if kind else self._config.export["file_prefix"]
+            name = f"{prefix}_{now.astimezone(KST):%Y%m%d_%H%M%S}.xlsx"
             try:
                 save_new_workbook(workbook, folder / name)  # 같은 이름이 있으면 덮어쓰지 않고 실패
             except FileExistsError:

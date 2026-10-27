@@ -34,7 +34,7 @@ def service(tmp_path):
     followup(service, "F-0001", TODAY)
     followup(service, "F-0002", date(2026, 11, 8))      # 이번 주 일요일
     followup(service, "F-0003", date(2026, 12, 5))      # 30일째
-    followup(service, "F-0004", date(2026, 11, 2), kind="CLO")  # 이번 주 월요일, 경과
+    followup(service, "F-0004", date(2026, 11, 2), kind="STOOL")  # 이번 주 월요일, 경과(CLO는 원장 지시 없음, A18)
     return service
 
 
@@ -81,7 +81,7 @@ def test_custom_range_and_its_validation(service):
 
 
 def test_due_filter_combines_with_kind_and_search(service):
-    assert charts(service.snapshot(due="due", kind="CLO")) == ["F-0004"]
+    assert charts(service.snapshot(due="due", kind="STOOL")) == ["F-0004"]
     assert charts(service.snapshot(due="due", query="F-0001")) == ["F-0001"]
 
 
@@ -92,7 +92,7 @@ def test_due_filter_page_menu_badge_and_links(service):
         bad = client.get("/dashboard?due=range&due_from=2026-13-01&due_to=2026-12-01")
     assert "재검 대상 · 재검 도래" in page
     assert 'class="nav-badge">3<' in page
-    assert "kind=CLO&amp;due=due" in page  # 종류 탭으로 바꿔도 도래 조건 유지
+    assert "kind=STOOL&amp;due=due" in page  # 종류 탭으로 바꿔도 도래 조건 유지
     assert "이 목록 엑셀 저장 (3명)" in page
     assert bad.status_code == 422
 
@@ -108,13 +108,13 @@ def test_followup_list_export_writes_only_the_filtered_people(service, tmp_path)
     rows = list(sheet.iter_rows(min_row=4, values_only=True))
     assert [(r[1], r[5]) for r in rows] == [("재검 기한 10일 경과", "T-0010"), ("재검 기한 3일 경과", "F-0004"),
                                             ("재검일 오늘", "F-0001")]
-    assert rows[1][2] == "RUT(CLO)" and rows[2][6] == "재검01"  # 연락용 목록이라 이름은 그대로
+    assert rows[1][2] == "Stool" and rows[2][6] == "재검01"  # 연락용 목록이라 이름은 그대로
     assert service.snapshot()["exports"][0].file_name == record.file_name
 
 
 def test_followup_export_refuses_empty_lists_and_missing_folder(service, tmp_path):
     with pytest.raises(DashboardError) as empty:
-        service.export_followups(kind="STOOL", due="due")
+        service.export_followups(kind="CLO", due="due")  # CLO에는 재검이 없다(A18)
     assert empty.value.status_code == 422
     no_folder = ManualDashboardService(clock=FixedClock(), export_dir="")
     with pytest.raises(DashboardError) as missing:

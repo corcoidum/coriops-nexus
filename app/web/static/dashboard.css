@@ -1368,3 +1368,20 @@ input:focus,select:focus {
     width:100%;
   }
 }
+
+/* 대장별 메뉴·화면 (A18) */
+.nav-item.sub {
+  padding:9px 12px 9px 24px;
+  font-size:12px;
+}
+
+.heading-actions {
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.clo-table td,.clo-table th {
+  white-space:nowrap;
+}

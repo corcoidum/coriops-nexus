@@ -1,6 +1,6 @@
 # ERD
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `0405fd8fd042483a7c9f365a60ba6ed3f3a1b2553765455564d760236bdd7ed6`
+> 원천: `ontology/coriops.yaml` · SHA-256 `7195ae2fe8489438e874d01f43616e3d986f14e7d8318c5f34b3f79f9fbd08a6`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 공통 필드(id·created_at·updated_at)는 모든 테이블에 있다. 관계는 각 클래스의 `references` 필드에서 만든다. JSONB 안에 들어가는 구성 요소(ReportFinding·SydneyGrading)와 config 등록값(ResultCode)은 그림에서 뺐다.

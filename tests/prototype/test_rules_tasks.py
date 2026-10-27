@@ -133,9 +133,17 @@ def test_l02_closes_when_result_arrives(service, clock):
 # ---------- L03 원장 지시 대기
 
 
+def resulted(service, chart="T-0711"):
+    """조직검사 1건: 접수 → 인계 → 결과(원장 지시 대기)."""
+    entry_id = biopsy(service, chart=chart)
+    pending = [e for e in service._store.entries() if service._stage(e) == "HANDOFF_PENDING"]
+    service.handoff("테스트 접수", "테스트 인계", "테스트 수령", sum(e.specimen_count or 1 for e in pending))
+    service.receive(entry_id, f"T99{chart[-4:]}", "TA#1(L)", "합성 위치")
+    return entry_id
+
+
 def test_l03_opens_on_result_and_closes_on_decision(service, clock):
-    entry_id = biopsy(service, kind="CLO")
-    service.receive(entry_id, "", "-", "")
+    entry_id = resulted(service)
     [task] = open_tasks(service, "PATH.L03")
     assert (task.assignee_role, task.title) == ("DOCTOR", "원장 지시 확인")
     assert task.due_at.astimezone(KST).date() == date(2026, 11, 6)  # 회신 다음 진료일 마감
@@ -147,10 +155,10 @@ def test_l03_opens_on_result_and_closes_on_decision(service, clock):
 
 
 def test_l03_skips_rows_imported_from_old_excel(service, clock):
-    entry_id = biopsy(service, kind="CLO")
+    entry_id = biopsy(service, kind="STOOL")
     entry = next(e for e in service._store.entries() if e.id == entry_id)
-    service._store.write(updated=[replace_entry(entry, clock.now(), source="IMPORT", reported_on=date(2026, 1, 5),
-                                                result_code="+")])
+    service._store.write(updated=[replace_entry(entry, clock.now(), source="IMPORT", entrusted_on=date(2026, 1, 5),
+                                                reported_on=date(2026, 1, 5), result_code="+")])
     at(service, clock, THU)
     assert open_tasks(service, "PATH.L03") == []
     assert service.snapshot()["flags"]["imported_pending"] == 1  # 화면 배지로만 둔다
@@ -160,10 +168,22 @@ def test_l03_skips_rows_imported_from_old_excel(service, clock):
 
 
 def followup(service, clock, due: date, chart="T-0710"):
-    entry_id = biopsy(service, chart=chart, kind="CLO")
-    service.receive(entry_id, "", "+", "")
+    entry_id = resulted(service, chart)
     service.decide(entry_id, "required", due)
     return entry_id
+
+
+def test_clo_closes_on_result_without_doctor_task(service, clock):
+    """CLO는 결과를 기록하면 종결한다. 원장 지시 단계·L03 할 일이 없다(A18)."""
+    entry_id = biopsy(service, chart="T-0712", kind="CLO")
+    service.receive(entry_id, "", "+", "")
+    snapshot = service.snapshot(kind="CLO")
+    assert snapshot["stages"][entry_id] == "CLOSED"
+    assert snapshot["alerts"][entry_id].text == "결과 기록 · 종결"
+    assert snapshot["visible_stages"] == ["RESULT_PENDING", "CLOSED"]
+    assert open_tasks(service) == []
+    with pytest.raises(Exception):
+        service.decide(entry_id, "required", date(2027, 1, 1))
 
 
 def test_l04_window_then_l05_on_the_day_then_done(service, clock):

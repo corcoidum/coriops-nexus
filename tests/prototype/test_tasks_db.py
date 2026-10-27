@@ -72,9 +72,17 @@ def test_tasks_open_close_and_stay_unique_in_postgres(service, clock, engine):
     assert {r.status for r in service.tasks.store.runs()} == {"SUCCEEDED"}
 
 
+def resulted(service, chart):
+    """조직검사 1건: 접수 → 인계 → 결과(원장 지시 대기, L03). CLO는 결과로 종결하므로 쓰지 않는다(A18)."""
+    entry_id = service.register("BIOPSY", chart, "테스트디비", date(2026, 11, 5), procedure_type="stomach",
+                                specimen_count="1")
+    service.handoff("테스트 접수", "테스트 인계", "테스트 수령", 1)
+    service.receive(entry_id, f"T99{chart[-4:]}", "TA#1(L)", "합성 위치")
+    return entry_id
+
+
 def test_people_close_tasks_once_in_postgres(service, clock):
-    entry_id = service.register("CLO", "T-0802", "테스트디비", date(2026, 11, 5))
-    service.receive(entry_id, "", "+", "")
+    resulted(service, "T-0802")
     [task] = [t for t in service.tasks.store.tasks() if t.rule_id == "PATH.L03"]
     closed = service.tasks.close(task.id, "DISMISSED", "테스트원장", "합성 사유")
     assert (closed.status, closed.resolved_by, closed.resolution_note) == ("DISMISSED", "테스트원장", "합성 사유")
@@ -104,8 +112,7 @@ def test_removed_rules_are_disabled_not_deleted(service, engine, clock, tmp_path
     "UPDATE tasks SET resolved_at = now()",  # OPEN인데 처리 시각이 있으면 거부
 ])
 def test_task_constraints(service, engine, sql):
-    entry_id = service.register("CLO", "T-0803", "테스트디비", date(2026, 11, 5))
-    service.receive(entry_id, "", "+", "")
+    resulted(service, "T-0803")
     with pytest.raises(IntegrityError):
         with engine.begin() as connection:
             connection.execute(text(sql))
