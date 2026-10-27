@@ -55,8 +55,8 @@ def case_in_stage(app, stage: str):
 
 
 def current_case(app, case_id: UUID):
-    # 분변잠혈(STOOL)은 분변잠혈 대장 화면에만 보인다(A22).
-    cases = snapshot(app)["cases"] + snapshot(app, ledger="fobt")["cases"]
+    # CLO(A27)·분변잠혈(A22)은 각 대장 화면에만 보인다.
+    cases = [case for ledger in ("tissue", "clo", "fobt") for case in snapshot(app, ledger=ledger)["cases"]]
     return next(case for case in cases if case.id == case_id)
 
 
@@ -94,19 +94,21 @@ def all_states(app):
 
 def test_seed_has_fourteen_independent_cases_in_every_stage(app):
     first = snapshot(app)
+    clo = snapshot(app, ledger="clo")
     fobt = snapshot(app, ledger="fobt")
     second_app = make_app()
 
-    # 합성 14건 중 분변잠혈 1건은 분변잠혈 대장에만 보인다(A22).
-    assert first["total"] == 13 and fobt["total"] == 1
-    assert len({case.id for case in first["cases"] + fobt["cases"]}) == 14
+    # 합성 14건 중 CLO 1건은 CLO 대장(A27)에, 분변잠혈 1건은 분변잠혈 대장(A22)에만 보인다.
+    assert (first["total"], clo["total"], fobt["total"]) == (12, 1, 1)
+    assert len({case.id for case in first["cases"] + clo["cases"] + fobt["cases"]}) == 14
     assert first["counts"] == {
-        "HANDOFF_PENDING": 2, "RESULT_PENDING": 4, "DOCTOR_PENDING": 3, "FOLLOWUP": 3, "CLOSED": 1,
+        "HANDOFF_PENDING": 2, "RESULT_PENDING": 3, "DOCTOR_PENDING": 3, "FOLLOWUP": 3, "CLOSED": 1,
     }
+    assert clo["counts"]["RESULT_PENDING"] == 1 and {case.kind for case in clo["cases"]} == {"CLO"}
     assert fobt["counts"]["CLOSED"] == 1 and {case.kind for case in fobt["cases"]} == {"STOOL"}
     assert first["flags"] == {"result_delayed": 1, "code_review": 1, "imported_pending": 0,
                               "followup_due": 1, "followup_overdue": 1, "followup_soon": 1, "positive_subjects": 0}
-    assert {case.kind for case in first["cases"]} == {"BIOPSY", "CLO"}
+    assert {case.kind for case in first["cases"]} == {"BIOPSY"}
     assert snapshot(second_app)["counts"] == first["counts"]
     assert app.state.dashboard_service is not second_app.state.dashboard_service
 
@@ -150,6 +152,15 @@ def test_dashboard_is_local_html_and_prevents_browser_caching(client):
     assert not re.search(r"(?:src|href)\s*=\s*['\"]\s*(?:https?:)?//", response.text, re.I)
 
 
+def test_stylesheet_blocks_are_all_closed(client):
+    """닫히지 않은 블록이 있으면 그 뒤 규칙이 모두 그 안으로 들어가 적용되지 않는다(병합 때 생긴 회귀)."""
+    depth = 0
+    for char in re.sub(r"/\*.*?\*/", "", client.get("/static/dashboard.css").text, flags=re.S):
+        depth += {"{": 1, "}": -1}.get(char, 0)
+        assert depth >= 0
+    assert depth == 0
+
+
 @pytest.mark.parametrize("stage", ("ALL", *STAGES))
 def test_every_stage_page_renders(client, stage):
     assert client.get(f"/dashboard?stage={stage}").status_code == 200
@@ -167,7 +178,9 @@ def test_result_waiting_is_flagged_only_after_the_business_day_threshold(app):
     rows = snapshot(app, stage="RESULT_PENDING")
     texts = sorted(rows["alerts"][case.id].text for case in rows["cases"])
 
-    assert texts == ["검사 후 0진료일", "위탁 후 1진료일", "위탁 후 2진료일", "위탁 후 4진료일 · 지연"]
+    assert texts == ["위탁 후 1진료일", "위탁 후 2진료일", "위탁 후 4진료일 · 지연"]
+    clo = snapshot(app, stage="RESULT_PENDING", ledger="clo")
+    assert [clo["alerts"][case.id].text for case in clo["cases"]] == ["검사 후 0진료일"]  # 인계 없는 RUT
 
 
 def test_doctor_page_hides_nothing_but_flags_unregistered_codes(app):
@@ -514,7 +527,7 @@ def test_register_puts_new_exam_in_the_right_first_stage(client, app, kind, expe
     response = post(client, app, "/ledger/register", **register_data(kind=kind))
 
     assert response.status_code == 303
-    assert response.headers["location"].startswith("/fobt?" if kind == "STOOL" else "/dashboard?")
+    assert response.headers["location"].startswith({"STOOL": "/fobt?", "CLO": "/clo?"}.get(kind, "/dashboard?"))
     entry_id = UUID(response.headers["location"].split("selected_id=")[1].split("&")[0])
     assert stage_of(app, entry_id) == expected
     entry = current_case(app, entry_id)
@@ -555,8 +568,9 @@ def test_invalid_registration_adds_nothing(client, app, data):
 def test_registration_form_and_kind_filter_render(client):
     form = client.get("/dashboard?new=1")
     assert form.status_code == 200 and "새 검사 접수" in form.text and 'name="kind"' in form.text
-    clo = client.get("/dashboard?kind=CLO")
+    clo = client.get("/clo")
     assert clo.status_code == 200 and "T-0013" in clo.text and "T-0001" not in clo.text
+    assert client.get("/dashboard?kind=CLO").status_code == 422  # CLO는 CLO 대장에서 본다(A27)
     assert client.get("/dashboard?kind=LAB").status_code == 422
 
 
@@ -573,8 +587,8 @@ def test_long_lists_are_paginated(app):
     for number in range(60):
         service.register("CLO", f"P-{number:04}", f"페이지{number}", date(2026, 11, 5))
 
-    first = snapshot(app, stage="RESULT_PENDING")
-    second = snapshot(app, stage="RESULT_PENDING", page=2)
+    first = snapshot(app, stage="RESULT_PENDING", ledger="clo")
+    second = snapshot(app, stage="RESULT_PENDING", page=2, ledger="clo")
     assert (first["pages"], len(first["cases"]), len(second["cases"])) == (2, 50, first["matched"] - 50)
 
 
@@ -585,7 +599,7 @@ def test_links_on_the_page_keep_the_current_view_and_open(client):
 
     page = client.get("/dashboard?stage=RESULT_PENDING&kind=BIOPSY").text
     links = {html.unescape(h) for h in re.findall(r'href="(/dashboard\?[^"]+)"', page)}
-    assert "/dashboard?stage=RESULT_PENDING&kind=CLO" in links
+    assert "/dashboard?stage=HANDOFF_PENDING&kind=BIOPSY" in links
     assert any("stage=RESULT_PENDING&kind=BIOPSY&selected_id=" in h for h in links)
     for href in links:
         assert client.get(href).status_code == 200, href

@@ -356,9 +356,9 @@ workflow:
   derivation:
     - {stage: HANDOFF_PENDING, when: 인계가 필요한 종류(config/ledger_app.yaml handoff=true)이고 위탁일이 없음}
     - {stage: RESULT_PENDING, when: 결과보고일이 없음}
-    - {stage: DOCTOR_PENDING, when: 원장 지시가 없음}
+    - {stage: DOCTOR_PENDING, when: '원장 지시 단계가 있는 장부(config/ledger_app.yaml ledgers.*.doctor_review, 기본 true)이고 원장 지시가 없음. CLO는 결과를 기록하면 종결(A27)'}
     - {stage: FOLLOWUP, when: 재검 계획이 있고 재검 완료일이 없음}
-    - {stage: CLOSED, when: 그 밖(재검 불필요 지시 또는 재검 완료)}
+    - {stage: CLOSED, when: '그 밖(재검 불필요 지시, 재검 완료, 또는 CLO 결과 기록)'}
   labels:
     HANDOFF_PENDING: 인계 대기
     RESULT_PENDING: 결과 대기
@@ -370,6 +370,7 @@ workflow:
     - {from: '[*]', to: RESULT_PENDING, action: register, permission: ledger.register, guard: handoff_not_required}
     - {from: HANDOFF_PENDING, to: RESULT_PENDING, action: handoff, permission: ledger.handoff, guard: bottle_count_matches}
     - {from: RESULT_PENDING, to: DOCTOR_PENDING, action: receive, permission: ledger.result, guard: registered_notation}
+    - {from: RESULT_PENDING, to: CLOSED, action: receive, permission: ledger.result, guard: no_doctor_review}
     - {from: DOCTOR_PENDING, to: FOLLOWUP, action: decide_required, permission: ledger.decide, guard: doctor_due_date}
     - {from: DOCTOR_PENDING, to: CLOSED, action: decide_not_required, permission: ledger.decide, guard: doctor_reason}
     - {from: FOLLOWUP, to: CLOSED, action: complete_followup, permission: ledger.followup, guard: done_date_not_future}
@@ -378,6 +379,7 @@ workflow:
     handoff_not_required: 종류의 handoff=false
     bottle_count_matches: 인계 대기 전체의 장부 병 수와 직원이 센 병 수가 같고 접수인·인계인·인수인이 모두 있음
     registered_notation: 조직검사는 등록 코드 표기, CLO·Stool은 20자 이내 판정. Sydney는 위 검체만
+    no_doctor_review: 원장 지시 단계가 없는 장부(CLO 대장, A27). 결과를 기록하면 종결하며 제균치료·재검 판단은 EMR에서 한다
     doctor_due_date: 원장이 정한 재검 날짜가 있음(시스템이 간격을 계산하지 않음)
     doctor_reason: 재검 불필요 사유가 있음. 여러 건 일괄 지시는 하나라도 실패하면 전부 취소
     done_date_not_future: 재검 시행일이 오늘 이전

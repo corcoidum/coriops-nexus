@@ -52,6 +52,16 @@ def biopsy(service, chart="T-0701", day=date(2026, 11, 5), kind="BIOPSY"):
     return service.register(kind, chart, "테스트규칙", day, specimen_count="1" if kind == "STOOL" else "")
 
 
+def resulted(service, chart="T-0701"):
+    """조직검사 1건을 결과 입력까지(원장 지시 대기). 다른 인계 대기 건은 건드리지 않게 위탁일만 적는다.
+    CLO는 결과를 기록하면 종결해 원장 지시 단계가 없다(A27)."""
+    entry_id = biopsy(service, chart=chart)
+    entry = next(e for e in service._store.entries() if e.id == entry_id)
+    service._store.write(updated=[replace_entry(entry, service._clock.now(), entrusted_on=entry.exam_date)])
+    service.receive(entry_id, f"R{chart[2:]}", "TA#1(L)", "합성 위치")
+    return entry_id
+
+
 def at(service, clock, moment):
     clock.moment = moment
     return service.tasks.run()
@@ -134,8 +144,7 @@ def test_l02_closes_when_result_arrives(service, clock):
 
 
 def test_l03_opens_on_result_and_closes_on_decision(service, clock):
-    entry_id = biopsy(service, kind="CLO")
-    service.receive(entry_id, "", "-", "")
+    entry_id = resulted(service)
     [task] = open_tasks(service, "PATH.L03")
     assert (task.assignee_role, task.title) == ("DOCTOR", "원장 지시 확인")
     assert task.due_at.astimezone(KST).date() == date(2026, 11, 6)  # 회신 다음 진료일 마감
@@ -147,21 +156,31 @@ def test_l03_opens_on_result_and_closes_on_decision(service, clock):
 
 
 def test_l03_skips_rows_imported_from_old_excel(service, clock):
-    entry_id = biopsy(service, kind="CLO")
+    entry_id = biopsy(service, kind="STOOL")
     entry = next(e for e in service._store.entries() if e.id == entry_id)
-    service._store.write(updated=[replace_entry(entry, clock.now(), source="IMPORT", reported_on=date(2026, 1, 5),
-                                                result_code="+")])
+    service._store.write(updated=[replace_entry(entry, clock.now(), source="IMPORT", entrusted_on=date(2026, 1, 5),
+                                                reported_on=date(2026, 1, 6), result_code="-")])
     at(service, clock, THU)
     assert open_tasks(service, "PATH.L03") == []
-    assert service.snapshot()["flags"]["imported_pending"] == 1  # 화면 배지로만 둔다
+    assert service.snapshot(ledger="fobt")["flags"]["imported_pending"] == 1  # 화면 배지로만 둔다
+
+
+def test_rut_result_closes_without_a_doctor_task(service, clock):
+    """CLO 대장(A27): 결과를 기록하면 종결한다. 원장 지시 할 일(L03)이 생기지 않고 결과 지연(L02)은 닫힌다."""
+    entry_id = biopsy(service, kind="CLO")
+    at(service, clock, kst(2026, 11, 9))
+    assert len(open_tasks(service, "PATH.L02")) == 1
+    service.receive(entry_id, "", "+", "")
+    at(service, clock, kst(2026, 11, 12))
+    assert open_tasks(service) == []
+    assert service.snapshot(ledger="clo")["stages"][entry_id] == "CLOSED"
 
 
 # ---------- L04·L05 재검
 
 
 def followup(service, clock, due: date, chart="T-0710"):
-    entry_id = biopsy(service, chart=chart, kind="CLO")
-    service.receive(entry_id, "", "+", "")
+    entry_id = resulted(service, chart=chart)
     service.decide(entry_id, "required", due)
     return entry_id
 

@@ -27,8 +27,8 @@ def test_export_writes_one_new_file_with_tissue_sheets(tmp_path):
     assert [f.name for f in files] == [record.file_name]
     assert record.file_name == "조직검체장부_20261105_100000.xlsx"
     workbook = load_workbook(files[0])
-    # 조직검체 장부 사본이라 분변잠혈(Stool) 시트는 없다. 분변잠혈은 종이 대장 ③으로 출력한다(A22).
-    assert workbook.sheetnames == ["Biopsy", "CLO"]
+    # 조직검체 장부 사본이라 CLO(A27)·분변잠혈(A22) 시트는 없다. 각 대장에서 따로 출력한다.
+    assert workbook.sheetnames == ["Biopsy"]
     biopsy = workbook["Biopsy"]
     headers = [c.value for c in biopsy[1]]
     assert headers[:17][-3:] == ["조직검사결과", "특이소견", "비고란"]
@@ -38,7 +38,6 @@ def test_export_writes_one_new_file_with_tissue_sheets(tmp_path):
     assert rows["T-0006"][14] == "TA#2(L), H#1"
     assert rows["T-0007"][15] == "HP-/Neu+/Mon++/Atr+/IM+"
     assert rows["T-0009"][18] == "재검 예정"
-    assert workbook["CLO"].max_row == 2
     assert service.snapshot()["exports"][0].file_name == record.file_name
 
 
@@ -110,4 +109,4 @@ def test_retention_counts_closed_rows_past_the_policy_without_deleting():
     assert retention["years"] == 5
     assert retention["expired"] == 2  # 종결 2건(재검 불필요) — 자동 삭제하지 않는다
     assert retention["status"] == "REQUIRES_OWNER_AND_LEGAL_REVIEW"
-    assert service.snapshot()["total"] + service.snapshot(ledger="fobt")["total"] == 14
+    assert sum(service.snapshot(ledger=name)["total"] for name in ("tissue", "clo", "fobt")) == 14

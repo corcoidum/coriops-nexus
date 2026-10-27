@@ -1623,6 +1623,8 @@ input:focus,select:focus {
   font-size:12px;
   font-weight:700;
   color:#b33a31;
+}
+
 /* 접수 폼 탭·체크 · 종이 대장 대조 (A15) */
 .form-tabs {
   display:flex;
@@ -1724,4 +1726,30 @@ input:focus,select:focus {
   .paper-toolbar .due-range input {
     width:100%;
   }
+}
+
+/* 장부 제목 옆 버튼 묶음 · 수기 엑셀 열 목록 (CLO 대장, A27) */
+.heading-actions {
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  flex-shrink:0;
+}
+
+.heading-actions form {
+  margin:0;
+}
+
+.heading-actions .button {
+  margin-top:0;
+}
+
+.ledger-columns td,.ledger-columns th {
+  white-space:nowrap;
+}
+
+.export-choice + .export-choice .full {
+  margin-top:9px;
 }

@@ -1,6 +1,6 @@
 # Ontology 데이터 사전
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `0405fd8fd042483a7c9f365a60ba6ed3f3a1b2553765455564d760236bdd7ed6`
+> 원천: `ontology/coriops.yaml` · SHA-256 `29d5769f20184385677c16c5bc5b83ae4f42ae84953ca2be1d31d850ec993539`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 실제 운영 흐름(A04~A13)에 맞춘 정식 모델이다. `implemented`는 실제 테이블이 있고 시험(`tests/prototype/test_ontology.py`)이 열·타입·NULL·FK·UNIQUE 일치를 검사한다. `planned`는 표시된 단계에서 구현한다.
