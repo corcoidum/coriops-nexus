@@ -5,9 +5,10 @@ from sqlalchemy import create_engine, pool
 
 from app.kernel.patients import metadata as patient_metadata
 from app.kernel.security_db import metadata as kernel_metadata
+from app.kernel.tasks import metadata as task_metadata
 from app.modules.endoscopy_pathology.ledger_db import database_url, metadata
 
-TARGETS = [kernel_metadata, patient_metadata, metadata]
+TARGETS = [kernel_metadata, patient_metadata, task_metadata, metadata]
 
 
 def run_migrations_online() -> None:

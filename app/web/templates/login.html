@@ -4,8 +4,9 @@
 <body class="login-body">
 <main class="login-card">
   <div class="brand login-brand"><span class="brand-mark">C</span><span>CoriOps<span class="brand-sub">NEXUS</span></span></div>
-  <h1>조직검체 장부 로그인</h1>
+  <h1>CoriOps Nexus 로그인</h1>
   <p class="form-intro">개인 계정으로만 로그인합니다. 계정을 함께 쓰지 않습니다.</p>
+  <p class="login-legal">환자 정보는 맡은 업무에만 조회·사용하고, 업무 중 알게 된 내용을 다른 사람에게 알리지 않습니다(의료법 제19조, 개인정보 보호법). 모든 조회·변경·출력은 접속기록에 남고 개인정보 책임자가 정기적으로 점검합니다.</p>
   {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
   {% if error %}<p class="alert-chip danger login-error" role="alert">{{ error }}</p>{% endif %}
   <form action="/login" method="post" autocomplete="off">

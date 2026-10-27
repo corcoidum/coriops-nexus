@@ -92,6 +92,33 @@ def test_db_allowance_only_opens_the_database_address():
     assert result.returncode == 0, result.stderr
 
 
+def test_db_allowance_lets_psycopg_reach_the_database():
+    # psycopg는 이름 조회 때 포트를 문자열로 넘긴다. 실제 연결로 확인해야 장부 서버 로그인 실패를 막을 수 있다.
+    script = (
+        "import os, socket, psycopg\n"
+        "from app.demo_server import block_outbound_sockets\n"
+        "import ipaddress\n"
+        "host, port = os.environ.get('PGHOST', 'postgres-test'), int(os.environ.get('PGPORT', '5432'))\n"
+        "try:\n"
+        "    ipaddress.ip_address(host)\n"
+        "    host = 'localhost'  # IP로 주면 psycopg가 이름 조회를 건너뛰어 버그를 재현하지 못한다\n"
+        "except ValueError:\n"
+        "    pass\n"
+        "hosts = {host, *(e[4][0] for e in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM))}\n"
+        "block_outbound_sockets(frozenset(hosts), port)\n"
+        "with psycopg.connect(host=host) as connection:\n"
+        "    assert connection.execute('SELECT 1').fetchone() == (1,)\n"
+        "try:\n"
+        "    socket.getaddrinfo('example.invalid', str(port))\n"
+        "except PermissionError as error:\n"
+        "    assert str(error) == 'DEMO_OUTBOUND_NETWORK_DISABLED'\n"
+        "else:\n"
+        "    raise AssertionError('DB 외 이름 조회가 열렸습니다')\n"
+    )
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
 def test_db_hostname_lookup_is_allowed_with_a_string_port():
     """psycopg는 DB 이름(예: Compose의 ledger-db)을 포트 문자열 '5432'로 조회한다. 숫자 포트와 같게 본다."""
     script = (

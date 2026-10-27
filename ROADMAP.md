@@ -36,8 +36,8 @@
 | 1 Ontology | Entity·관계·상태·FHIR | ✅ v0.2 | `ontology/coriops.yaml` v0.2 21클래스(구현 18·예정 3)·`scripts/gen_docs.py`·YAML=코드=DB 일치 시험 |
 | 2 PostgreSQL ERD | 테이블·FK·제약·마이그레이션·감사 필드 | ✅ | Alembic 0001~0003. `patients`·`exams`·`specimens`·`exam_results`·`doctor_reviews`·`followups` |
 | 3 Endoscopy + Specimen MVP | 접수 → 인계 → 결과 → 원장 지시 → 재검 | ✅ | DB 저장 장부, 3자 인계·병 수 대조, 엑셀 가져오기·대조·출력, 종이 대장 ①·② 대조·같은 양식 출력(A15) |
-| 4 Rule Engine | 규칙이 누락을 찾아냄 | 🔴 | 지연·도래는 화면에서 즉석 계산. `config/rules.yaml`은 설계만 |
-| 5 Task Engine | 담당·상태·출처가 있는 Task | 🔴 | Task 테이블 없음 |
+| 4 Rule Engine | 규칙이 누락을 찾아냄 | ✅ | L01~L05(`config/rules.yaml` v0.3), 실행 기록, 중복 방지·자동 해소(B-1) |
+| 5 Task Engine | 담당·상태·출처가 있는 Task | 🟡 | `tasks` 저장·닫기(B-1). "오늘 할 일" 화면은 B-2 |
 | 6 Lab Integration | 씨젠 결과 → Observation | ⚪ | — |
 | 7 Screening F/U | 검진 결과 후속관리 | ⚪ | — |
 | 8 Recall Engine | 정기 재검·주사·백신 | 🟡 | 내시경 재검만: 재검 도래·기간 필터·대상자 출력 |
@@ -82,6 +82,9 @@
 
 ### Stage B — Rule + Task Engine (초안 Phase 4·5)
 
+- **B-1 ✅** 규칙 L01~L05·실행기·`rules`·`rule_runs`·`tasks`(Alembic 0004), `ledger_entries_legacy` 삭제(A17). Stool 당일 인계(A16)
+- **B-2** "오늘 할 일" 화면(오늘·기한 지남·대기·완료, 내 역할), 확인 완료·해당 없음, 대시보드 숫자 연결
+
 - 규칙이 Task를 **DB에 저장**한다. 같은 대상·같은 회차는 한 번만 저장하고(중복 방지), 실행 이력을 남긴다
 - 첫 규칙: 인계 누락(수령 시각 경과), 결과 지연(2진료일 초과), 원장 지시 대기, 재검 30일 이내, 재검 도래·경과
 - Task: 담당 역할·상태(OPEN·DONE·DISMISSED·AUTO_RESOLVED)·처리자·처리 시각·출처를 둔다. 대시보드는 Today·Overdue·Pending·Done을 Task에서 읽는다
@@ -98,11 +101,13 @@
 - 씨젠 XLSX → 검사 결과(Observation) → 원장 확인 Task. 지금의 엑셀 가져오기 방식을 재사용한다(메모리 읽기, 무저장 미리보기, 신규만 저장, 셀 값 없는 오류 보고)
 - 검진: 완료 → 결과 도착 → 원장 확인 → F/U 필요 Task
 - **완료 조건:** 가상 Lab 파일 가져오기, 항목 매핑, 환자 연결, 결과 미확인 Task 생성
+- 선행 시연(A25): 혈액검체 원내 서식(12열) 합성 Excel·메모리 대시보드 탭(`/lab`, DB 모드에서는 꺼짐). Stage D 완료로 보지 않는다. [계획](docs/blood-ledger-plan.md)
 
 ### Stage E — Clinic Dashboard v1.0 (초안 Phase 9)
 
 - 출근 후 한 화면: 오늘 인계·결과 지연·원장 확인·재검 도래·검진 F/U·7일 이내 Recall
 - **완료 조건:** 실제 환자정보 없이 시연할 수 있고, 항목을 누르면 상세 흐름으로 이어진다
+- 첫 형태(A26): `/` '오늘 할 일'에 조직검체·혈액검체 건수 카드와 모든 화면 상단 위급치 알림. 검진 F/U·Recall이 빠져 있어 Stage E 완료로 보지 않는다.
 
 ### Stage F — AI Copilot (초안 Phase 13·14)
 

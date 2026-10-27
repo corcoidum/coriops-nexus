@@ -162,8 +162,10 @@ def test_intake_form_matches_paper_ledger_and_links_work(client):
     page = client.get("/dashboard?new=1").text
     for label in ("시행날짜", "차트번호", "성명", "성별/나이", "검사명", "조직검사 유무, 위치 및 개수", "부위", "개수(병)", "RUT"):
         assert label in page
-    stool = client.get("/dashboard?new=1&new_kind=STOOL")
-    assert stool.status_code == 200 and 'value="STOOL"' in stool.text
+    # 분변잠혈 접수는 분변잠혈 대장에서만 한다(A22).
+    assert 'value="STOOL"' not in page
+    stool = client.get("/fobt?new=1")
+    assert stool.status_code == 200 and 'value="STOOL"' in stool.text and "접수일자" in stool.text
 
     response = post(client, "/ledger/register", kind="ENDOSCOPY", exam_date="2026-11-04", chart_no="T-0201",
                     patient_name="테스트화면", sex_age="F/56", procedure_type="stomach", biopsy="on", site="body",

@@ -1266,6 +1266,363 @@ input:focus,select:focus {
   margin-left:6px;
 }
 
+/* 혈액검체 탭 */
+.stat-grid.four {
+  grid-template-columns:repeat(4,minmax(0,1fr));
+}
+
+.stage-pill.critical_pending {
+  background:#fdecea;
+  color:#b33a31;
+  font-weight:600;
+}
+
+.critical-row td:first-child {
+  box-shadow:inset 3px 0 0 #c8463d;
+}
+
+@media(max-width:1150px) {
+  .stat-grid.four {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+/* 장부 구분: 조직검체 = 파랑, 혈액검체 = 청록. 빨강은 긴급(위급치·재검 도래)에만 쓴다. */
+:root {
+  --tissue:#315dd3;
+  --tissue-tint:#e8eefb;
+  --blood:#0f8a7e;
+  --blood-tint:#e3f4f1;
+}
+
+.ledger-chip {
+  display:inline-block;
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:0;
+  border-radius:4px;
+  padding:2px 7px;
+  margin-right:6px;
+  vertical-align:1px;
+}
+
+.ledger-chip.tissue {
+  color:var(--tissue);
+  background:var(--tissue-tint);
+}
+
+.ledger-chip.blood {
+  color:var(--blood);
+  background:var(--blood-tint);
+}
+
+.nav-home {
+  margin-top:28px;
+}
+
+.nav-group {
+  border-left:3px solid transparent;
+  border-radius:3px;
+  padding-left:4px;
+  margin-top:16px;
+}
+
+.nav-group.tissue {
+  border-left-color:var(--tissue);
+}
+
+.nav-group.blood {
+  border-left-color:var(--blood);
+}
+
+.nav-group .sidebar-section {
+  margin:6px 12px 6px;
+}
+
+.nav-group.tissue .sidebar-section {
+  color:#9db8f0;
+}
+
+.nav-group.blood .sidebar-section {
+  color:#7fd3c8;
+}
+
+.nav-group .nav-item {
+  padding-top:10px;
+  padding-bottom:10px;
+}
+
+.critical-alert {
+  background:#fdecea;
+  color:#b33a31;
+  font-weight:700;
+  font-size:12px;
+  border-radius:999px;
+  padding:6px 13px;
+  margin-left:auto;
+  margin-right:16px;
+  white-space:nowrap;
+}
+
+.critical-alert:hover {
+  background:#f9d8d4;
+}
+
+.today-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:16px;
+  margin-bottom:26px;
+}
+
+.today-card {
+  padding:18px 20px;
+  border-top:4px solid var(--c);
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+
+.today-card.tissue {
+  --c:var(--tissue);
+}
+
+.today-card.blood {
+  --c:var(--blood);
+}
+
+.today-head {
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+
+.today-head h2 {
+  margin:0;
+  font-size:16px;
+}
+
+.today-flow {
+  margin:0 0 6px;
+  font-size:12px;
+  color:var(--muted);
+}
+
+.today-row {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:9px 12px;
+  border-radius:7px;
+  background:#f6f8fa;
+  font-size:13px;
+}
+
+.today-row strong {
+  font-size:20px;
+}
+
+.today-row:hover {
+  background:#edf1f4;
+}
+
+.today-row.warn {
+  background:#fcf4e7;
+  color:#9a6a17;
+}
+
+.today-row.danger {
+  background:#fdecea;
+  color:#b33a31;
+}
+
+.today-go {
+  margin-top:6px;
+  font-size:12px;
+  font-weight:700;
+  color:var(--c);
+}
+
+@media(max-width:950px) {
+  .today-grid {
+    grid-template-columns:minmax(0,1fr);
+  }
+  .critical-alert {
+    margin-right:8px;
+  }
+}
+
+.nav-item .nav-badge {
+  font-size:10px;
+  color:#fff;
+}
+
+@media(max-width:950px) {
+  .alert-long {
+    display:none;
+  }
+}
+
+@media(max-width:520px) {
+  .topbar .date {
+    display:none;
+  }
+}
+
+/* 휴대폰 폭: 사이드바를 위쪽 가로 메뉴로 바꿔 본문이 화면 전체 폭을 쓴다. */
+@media(max-width:760px) {
+  .sidebar {
+    position:static;
+    width:auto;
+    min-height:0;
+    flex-direction:row;
+    align-items:center;
+    gap:4px;
+    overflow-x:auto;
+    padding:8px 12px;
+  }
+  .brand {
+    font-size:15px;
+    padding-left:0;
+    gap:8px;
+    flex-shrink:0;
+    margin-right:6px;
+  }
+  .brand-mark {
+    width:26px;
+    height:28px;
+    font-size:15px;
+    border-radius:7px;
+  }
+  .brand-sub,.sidebar .sidebar-section,.user-box span,.demo-label {
+    display:none;
+  }
+  .nav-group {
+    display:flex;
+    gap:2px;
+    margin:0;
+    padding:0 0 0 4px;
+    flex-shrink:0;
+  }
+  .nav-item,.nav-home {
+    white-space:nowrap;
+    padding:7px 9px;
+    font-size:12px;
+    gap:6px;
+    margin:0;
+    flex-shrink:0;
+  }
+  .nav-item span {
+    font-size:14px;
+  }
+  .sidebar-bottom {
+    margin:0 0 0 8px;
+    padding:0;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-shrink:0;
+  }
+  .user-box {
+    flex-direction:row;
+    align-items:center;
+    gap:8px;
+    margin:0;
+    white-space:nowrap;
+  }
+  .reset-button {
+    padding:0;
+    white-space:nowrap;
+  }
+  .workspace {
+    margin-left:0;
+  }
+  .topbar {
+    padding:0 14px;
+    height:52px;
+  }
+  .page-body {
+    padding:18px 14px;
+  }
+  .page-heading {
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  .search-form input {
+    min-width:0;
+  }
+  .kind-tabs {
+    flex-wrap:wrap;
+  }
+  .due-range {
+    flex-wrap:wrap;
+  }
+  .due-range input {
+    flex:1;
+    width:auto;
+    min-width:0;
+  }
+  .handoff-form {
+    grid-template-columns:minmax(0,1fr);
+  }
+}
+
+.login-legal {
+  font-size:11px;
+  line-height:1.6;
+  color:#5f7180;
+  background:#f6f8fa;
+  border-left:3px solid var(--nav);
+  border-radius:4px;
+  padding:8px 10px;
+  margin:0 0 14px;
+}
+
+/* 혈액 결과 입력 */
+.lab-rows {
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:10px 12px 12px;
+  margin:12px 0;
+}
+
+.lab-rows legend {
+  font-size:12px;
+  font-weight:700;
+  padding:0 4px;
+}
+
+.lab-row {
+  display:grid;
+  grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,.8fr);
+  gap:6px;
+  margin-bottom:6px;
+  align-items:center;
+}
+
+.check-line {
+  display:flex;
+  gap:6px;
+  align-items:center;
+  font-size:12px;
+  margin:8px 0 4px;
+  font-weight:400;
+}
+
+.critical-mark {
+  border:1px solid #f3c7c2;
+  background:#fff8f7;
+  border-radius:8px;
+  padding:8px 12px;
+  margin-bottom:14px;
+}
+
+.critical-mark summary {
+  cursor:pointer;
+  font-size:12px;
+  font-weight:700;
+  color:#b33a31;
 /* 접수 폼 탭·체크 · 종이 대장 대조 (A15) */
 .form-tabs {
   display:flex;

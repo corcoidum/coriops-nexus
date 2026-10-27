@@ -1,6 +1,6 @@
 # Ontology 데이터 사전
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `c35b8a3d18f2da87859f3ab5770c10c19a83fd7f0dc120a01d5a14801ea67f71`
+> 원천: `ontology/coriops.yaml` · SHA-256 `0405fd8fd042483a7c9f365a60ba6ed3f3a1b2553765455564d760236bdd7ed6`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 실제 운영 흐름(A04~A13)에 맞춘 정식 모델이다. `implemented`는 실제 테이블이 있고 시험(`tests/prototype/test_ontology.py`)이 열·타입·NULL·FK·UNIQUE 일치를 검사한다. `planned`는 표시된 단계에서 구현한다.
@@ -27,9 +27,9 @@
 | [ReportFinding](#reportfinding) | endoscopy_pathology | 구현됨 | `ExamResult.findings` 안의 JSONB | 결과 코드 1개. 예 TA#2(L) = code TA, lesion_count 2, modifiers [L] |
 | [SydneyGrading](#sydneygrading) | endoscopy_pathology | 구현됨 | `ExamResult.sydney` 안의 JSONB | Sydney 표기 HP-/Neu++/Mon++/Atr+/IM-의 구조화 |
 | [ResultCode](#resultcode) | endoscopy_pathology | 구현됨 | 등록값 `config/result_codes.yaml` | 등록 결과 코드. 화면에서 편집하지 않는다 |
-| [Rule](#rule) | kernel | 예정(Stage B) | 테이블 `rules` | 상태·기한·누락을 찾는 규칙 1개. 매개변수는 config/rules.yaml |
-| [RuleRun](#rulerun) | kernel | 예정(Stage B) | 테이블 `rule_runs` | 규칙 실행 1회 |
-| [Task](#task) | kernel | 예정(Stage B) | 테이블 `tasks` | 규칙이 만든 할 일 1건. 같은 대상·같은 회차는 한 번만 |
+| [Rule](#rule) | kernel | 구현됨 | 테이블 `rules` | 상태·기한·누락을 찾는 규칙 1개. 제목·담당·일수는 config/rules.yaml에서 맞춘다 |
+| [RuleRun](#rulerun) | kernel | 구현됨 | 테이블 `rule_runs` | 규칙 실행 1회. 전체(ALL) 또는 방금 바뀐 검사(SUBJECTS) |
+| [Task](#task) | kernel | 구현됨 | 테이블 `tasks` | 규칙이 만든 할 일 1건. 같은 규칙·대상·기준날짜는 한 번만 |
 
 ## 공통 필드
 
@@ -343,9 +343,9 @@ Sydney 표기 HP-/Neu++/Mon++/Atr+/IM-의 구조화
 
 ### Rule
 
-상태·기한·누락을 찾는 규칙 1개. 매개변수는 config/rules.yaml
+상태·기한·누락을 찾는 규칙 1개. 제목·담당·일수는 config/rules.yaml에서 맞춘다
 
-위치 `kernel` · 예정(Stage B) · 테이블 `rules` · FHIR `PlanDefinition`
+위치 `kernel` · 구현됨 · 테이블 `rules` · FHIR `PlanDefinition`
 
 | 필드 | 타입 | NULL | 제약 |
 |---|---|---|---|
@@ -354,44 +354,52 @@ Sydney 표기 HP-/Neu++/Mon++/Atr+/IM-의 구조화
 | enabled | boolean | 금지 | — |
 | config_hash | string | 금지 | — |
 
+제약: 설정에서 빠진 규칙은 지우지 않고 끈다(기존 할 일의 출처 보존)
+
 ### RuleRun
 
-규칙 실행 1회
+규칙 실행 1회. 전체(ALL) 또는 방금 바뀐 검사(SUBJECTS)
 
-위치 `kernel` · 예정(Stage B) · 테이블 `rule_runs` · FHIR `직접 대응 없음`
+위치 `kernel` · 구현됨 · 테이블 `rule_runs` · FHIR `직접 대응 없음`
 
 | 필드 | 타입 | NULL | 제약 |
 |---|---|---|---|
-| rule_id | uuid | 금지 | FK → Rule (evaluates) |
 | evaluated_at | timestamptz | 금지 | — |
-| finished_at | timestamptz | 허용 | — |
+| finished_at | timestamptz | 금지 | — |
+| scope | enum | 금지 | enum RuleRunScope |
 | status | enum | 금지 | enum RuleRunStatus |
 | config_hash | string | 금지 | — |
 | candidate_count | integer | 금지 | — |
+| created_count | integer | 금지 | — |
+| resolved_count | integer | 금지 | — |
 | error_code | string | 허용 | — |
+
+제약: 이름·차트번호를 기록하지 않음 / 실패해도 업무 기록은 되돌리지 않고 실패만 남김
 
 ### Task
 
-규칙이 만든 할 일 1건. 같은 대상·같은 회차는 한 번만
+규칙이 만든 할 일 1건. 같은 규칙·대상·기준날짜는 한 번만
 
-위치 `kernel` · 예정(Stage B) · 테이블 `tasks` · FHIR `Task`
+위치 `kernel` · 구현됨 · 테이블 `tasks` · FHIR `Task`
 
 | 필드 | 타입 | NULL | 제약 |
 |---|---|---|---|
 | rule_id | uuid | 금지 | FK → Rule (createdBy) |
+| run_id | uuid | 금지 | FK → RuleRun (openedIn) |
 | subject_type | string | 금지 | — |
 | subject_id | uuid | 금지 | — |
 | dedupe_key | string | 금지 | unique=True |
 | title | string | 금지 | — |
+| priority | enum | 금지 | enum TaskPriority |
 | assignee_role | enum | 금지 | enum StaffRoleCode |
 | opened_at | timestamptz | 금지 | — |
 | due_at | timestamptz | 금지 | — |
 | status | enum | 금지 | enum TaskStatus |
 | resolved_at | timestamptz | 허용 | — |
 | resolved_by | string | 허용 | — |
-| condition_cleared_at | timestamptz | 허용 | — |
+| resolution_note | string | 금지 | — |
 
-제약: 제목은 고정 문구이며 이름·차트번호·결과 금지
+제약: dedupe_key={rule_id}:{subject_type}:{subject_id}:{anchor} / 제목은 고정 문구이며 이름·차트번호·결과 금지 / OPEN이면 resolved_at 없음 / 사람이 닫은(DONE·DISMISSED) 키는 조건이 남아도 다시 만들지 않음 / DISMISSED는 사유 필수
 
 ## Enum
 
@@ -407,7 +415,9 @@ Sydney 표기 HP-/Neu++/Mon++/Atr+/IM-의 구조화
 | ResultCodeScope | UPPER_GI, LOWER_GI, ANY |
 | ResultSeverityTier | ROUTINE, ATTENTION, CRITICAL |
 | SydneyGrade | NEG, POS1, POS2, POS3 |
-| RuleRunStatus | RUNNING, SUCCEEDED, FAILED |
+| RuleRunStatus | SUCCEEDED, FAILED |
+| RuleRunScope | ALL, SUBJECTS |
+| TaskPriority | NORMAL, HIGH, URGENT |
 | TaskStatus | OPEN, DONE, DISMISSED, AUTO_RESOLVED |
 
 ## 등록값
@@ -421,7 +431,7 @@ Sydney 표기 HP-/Neu++/Mon++/Atr+/IM-의 구조화
 
 ## 전환기 테이블
 
-- `ledger_entries_legacy`: Stage A-2 이전 시점 사본(0003). 새 기록이 반영되지 않으며 다음 리비전에서 삭제
+없음
 
 ## 규칙
 
