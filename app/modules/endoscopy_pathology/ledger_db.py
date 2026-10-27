@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID, insert as pg_i
 from sqlalchemy.engine import Engine
 
 from app.kernel.patients import PatientConflict, ensure_patient, patients
+from app.kernel.database import connection as database_connection, transaction as database_transaction
 
 from .ledger_model import ExportRecord, Handoff, ImportBatch, LedgerEntry
 from .result_notation import Finding
@@ -297,25 +298,25 @@ class PostgresStore:
         self._engine = engine or create_engine(database_url(), pool_pre_ping=True)
 
     def entries(self) -> list[LedgerEntry]:
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             return [_from_row(row) for row in connection.execute(_entries_query())]
 
     def handoffs(self) -> list[Handoff]:
         columns = [handoffs.c[name] for name in ("id", "handed_at", "registered_by", "handed_by",
                                                  "receiver_name", "specimen_count", "case_count")]
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             return [Handoff(*row) for row in connection.execute(select(*columns).order_by(handoffs.c.handed_at))]
 
     def imports(self) -> list[ImportBatch]:
         columns = [import_batches.c[name] for name in ("id", "committed_at", "digest", "accepted",
                                                        "skipped", "sheet_counts")]
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             return [ImportBatch(*row) for row in connection.execute(
                 select(*columns).order_by(import_batches.c.committed_at))]
 
     def exports(self) -> list[ExportRecord]:
         columns = [exports.c[name] for name in ("id", "exported_at", "file_name", "row_count")]
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             return [ExportRecord(*row) for row in connection.execute(
                 select(*columns).order_by(exports.c.exported_at))]
 
@@ -323,7 +324,7 @@ class PostgresStore:
         from sqlalchemy.exc import IntegrityError
 
         try:
-            with self._engine.begin() as connection:
+            with database_transaction(self._engine) as connection:
                 if handoff:
                     connection.execute(insert(handoffs).values(
                         id=handoff.id, handed_at=handoff.handed_at, registered_by=handoff.registered_by,

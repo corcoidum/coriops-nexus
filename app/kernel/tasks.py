@@ -26,6 +26,7 @@ from sqlalchemy.engine import Engine
 import yaml
 
 from .clock import Clock, SystemClock
+from .database import connection as database_connection, transaction as database_transaction
 
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[2] / "config" / "rules.yaml"
@@ -344,7 +345,7 @@ class PostgresTaskStore:
         self._rule_ids: dict[str, UUID] = {}
 
     def sync_rules(self, book, now):
-        with self._engine.begin() as connection:
+        with database_transaction(self._engine) as connection:
             connection.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": LOCK_KEY})
             stored = {row.rule_id: row for row in connection.execute(select(rules))}
             for rule_id, spec in book.specs.items():
@@ -363,28 +364,28 @@ class PostgresTaskStore:
 
     @contextmanager
     def locked(self):
-        with self._engine.begin() as connection:
+        with database_transaction(self._engine) as connection:
             connection.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": LOCK_KEY})
             yield _PostgresTx(connection, self._rule_ids)
 
     def tasks(self):
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             return [Task(*row) for row in connection.execute(_task_query().order_by(tasks.c.due_at))]
 
     def runs(self):
         columns = [rule_runs.c[name] for name in ("id", "evaluated_at", "finished_at", "scope", "status",
                                                   "config_hash", "candidate_count", "created_count",
                                                   "resolved_count", "error_code")]
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             return [RuleRun(*row) for row in connection.execute(select(*columns).order_by(rule_runs.c.evaluated_at))]
 
     def last_full_run(self):
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             return connection.execute(select(rule_runs.c.evaluated_at).where(rule_runs.c.scope == "ALL")
                                       .order_by(rule_runs.c.evaluated_at.desc()).limit(1)).scalar()
 
     def close(self, task_id, status, by, note, at):
-        with self._engine.begin() as connection:
+        with database_transaction(self._engine) as connection:
             result = connection.execute(update(tasks).where(tasks.c.id == task_id, tasks.c.status == "OPEN").values(
                 status=status, resolved_at=at, resolved_by=by, resolution_note=note, updated_at=at))
             if result.rowcount != 1:
@@ -408,6 +409,10 @@ class TaskEngine:
         if not self._synced:
             self.store.sync_rules(self.book, now)
             self._synced = True
+
+    def invalidate_sync(self) -> None:
+        """바깥 업무가 rollback되면 DB에 저장되지 않은 규칙 ID를 다시 읽는다."""
+        self._synced = False
 
     def run(self, subjects: set[UUID] | None = None) -> RuleRun:
         """규칙을 돌려 할 일을 맞춘다. subjects를 주면 그 대상만 열고 닫는다(업무 기록 직후)."""

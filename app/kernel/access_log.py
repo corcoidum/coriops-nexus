@@ -19,6 +19,7 @@ from sqlalchemy.engine import Engine
 import yaml
 
 from app.kernel.clock import Clock, SystemClock
+from app.kernel.database import connection as database_connection, transaction as database_transaction
 from app.kernel.security_db import access_log_reviews, access_logs
 
 
@@ -88,7 +89,7 @@ class AccessLogger:
         """정보주체마다 한 행. 기록에 실패하면 예외가 올라가 화면도 응답하지 않는다."""
         now = self._clock.now()
         refs = list(dict.fromkeys(s for s in (subjects or []) if s)) or [None]
-        with self._engine.begin() as connection:
+        with database_transaction(self._engine) as connection:
             # 순번·직전 해시 읽기·추가를 직렬화한다.
             connection.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": LOCK_KEY})
             last = connection.execute(select(access_logs.c.sequence_no, access_logs.c.hash)
@@ -109,7 +110,7 @@ class AccessLogger:
     def verify(self) -> dict:
         """처음부터 끝까지 다시 계산한다. 끊긴 곳이 있으면 그 순번을 알려준다."""
         prev, expected_seq, count, last = GENESIS, 1, 0, None
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             for row in self._rows(connection, select(access_logs).order_by(access_logs.c.sequence_no)):
                 data = row.__dict__
                 if row.sequence_no != expected_seq or row.prev_hash != prev or row_hash(data) != row.hash:
@@ -126,7 +127,7 @@ class AccessLogger:
             conditions.append(access_logs.c.subject_ref == subject)
         if action:
             conditions.append(access_logs.c.action == action)
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             total = connection.execute(select(func.count()).select_from(access_logs).where(*conditions)).scalar_one()
             rows = self._rows(connection, select(access_logs).where(*conditions)
                               .order_by(access_logs.c.sequence_no.desc())
@@ -136,7 +137,7 @@ class AccessLogger:
     def bulk_alerts(self, start: datetime, end: datetime) -> list[dict]:
         """설정한 시간 창 안에 서로 다른 정보주체를 기준보다 많이 상세 조회·변경한 사람."""
         window = timedelta(minutes=self.policy.bulk_window_minutes)
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             rows = self._rows(connection, select(access_logs).where(
                 access_logs.c.at >= start, access_logs.c.at < end, access_logs.c.action.in_(BULK_ACTIONS),
                 access_logs.c.subject_ref.is_not(None)).order_by(access_logs.c.at))
@@ -164,14 +165,14 @@ class AccessLogger:
         alerts = self.bulk_alerts(start, end)
         now = self._clock.now()
         last = check["last"]
-        with self._engine.begin() as connection:
+        with database_transaction(self._engine) as connection:
             connection.execute(insert(access_log_reviews).values(
                 id=uuid4(), reviewer_id=reviewer_id, reviewed_at=now, period_start=start, period_end=end,
                 last_sequence=last.sequence_no if last else 0, last_hash=last.hash if last else GENESIS,
                 chain_ok=check["ok"], bulk_alerts=len(alerts), note=note[:200], created_at=now, updated_at=now))
 
     def reviews(self, limit: int = 5) -> list[dict]:
-        with self._engine.connect() as connection:
+        with database_connection(self._engine) as connection:
             rows = connection.execute(select(access_log_reviews).order_by(access_log_reviews.c.reviewed_at.desc())
                                       .limit(limit)).all()
         return [dict(r._mapping) for r in rows]

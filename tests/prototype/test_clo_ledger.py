@@ -15,7 +15,7 @@ from app.main import create_app
 from app.modules.endoscopy_pathology.excel_io import DEFAULT_CONFIG, LedgerAppConfig
 from app.modules.endoscopy_pathology.ledger_db import MemoryStore
 from app.modules.endoscopy_pathology.manual_dashboard import DashboardError, ManualDashboardService
-from ledger_helpers import FixedClock, standard_workbook
+from ledger_helpers import FixedClock, short_row, standard_workbook, workbook_bytes
 
 CLO_HEADERS = ["검사일", "차트번호", "수진자명", "성별", "CLO결과"]
 
@@ -106,6 +106,37 @@ def test_closed_clo_counts_for_retention_from_the_result_date(service):
     assert service.snapshot(ledger="clo")["retention"]["expired"] == 2
 
 
+@pytest.mark.parametrize("result", ["검토: 합성 원문", ""])
+def test_clo_report_date_without_valid_result_stays_editable(service, result):
+    day = date(2020, 10, 2)
+    content = workbook_bytes(clo=[short_row(day, "T9100002", "T-9103", "테스트결과검토",
+                                          result=result, reported=day)])
+    service.commit_import(service.preview_import(content))
+    entry = service._store.entries()[0]
+    snapshot = service.snapshot(ledger="clo")
+    assert snapshot["stages"][entry.id] == "RESULT_PENDING"
+    assert snapshot["retention"]["expired"] == 0
+    assert "다시 입력" in snapshot["alerts"][entry.id].text
+    with TestClient(create_app(service)) as client:
+        page = client.get(f"/clo?selected_id={entry.id}")
+        assert f'action="/ledger/cases/{entry.id}/receive"' in page.text
+        assert 'value="T9100002"' in page.text  # 오류를 고칠 때 기존 접수번호를 다시 타이핑하지 않는다.
+    service.receive(entry.id, "T9100002", "+", "")
+    corrected = service._store.entries()[0]
+    assert corrected.result_code == "+" and not corrected.needs_review
+    assert service.snapshot(ledger="clo")["stages"][entry.id] == "CLOSED"
+
+
+def test_clo_result_format_review_is_not_counted_as_a_delayed_result(service):
+    day = date(2026, 11, 5)
+    content = workbook_bytes(clo=[short_row(day, "T9100003", "T-9104", "테스트당일결과",
+                                          result="검토: 합성 원문", reported=day)])
+    service.commit_import(service.preview_import(content))
+    snapshot = service.snapshot(ledger="clo")
+    assert snapshot["counts"]["RESULT_PENDING"] == 1
+    assert snapshot["flags"]["result_delayed"] == 0
+
+
 def test_clo_export_has_exactly_the_five_columns(service, tmp_path):
     service.commit_import(service.preview_import(standard_workbook()))
     service.commit_import(service.preview_import(clo_file(("2025", ROWS_2025)), ledger="clo"))
@@ -154,6 +185,7 @@ def test_clo_menu_and_screen(client):
     home = client.get("/").text
     assert 'href="/clo"' in home and "CLO 대장" in home
     page = client.get("/clo").text
+    assert 'name="site_summary"' not in page
     assert "<h1>CLO 대장</h1>" in page and "T-0013" in page and "T-0001" not in page
     for header in CLO_HEADERS:
         assert f'<th scope="col">{header}</th>' in page

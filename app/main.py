@@ -116,6 +116,9 @@ def create_app(service: ManualDashboardService | None = None, csrf_token: str | 
             "default-src 'none'; style-src 'self'; img-src 'self' data:; "
             "form-action 'self'; base-uri 'none'; frame-ancestors 'none'; connect-src 'none'"
         )
+        if request.url.path == "/lab":
+            # 혈액 입력란 추가·삭제용 로컬 스크립트만 허용한다. 외부 통신은 계속 막는다.
+            response.headers["Content-Security-Policy"] += "; script-src 'self'"
         return response
 
     @app.exception_handler(UserError)

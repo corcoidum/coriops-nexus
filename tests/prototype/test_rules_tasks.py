@@ -67,12 +67,11 @@ def at(service, clock, moment):
     return service.tasks.run()
 
 
-# ---------- L01 인계 누락 (조직검사·Stool 당일 인수·당일 인계, A16)
+# ---------- L01 인계 누락 (조직검사만, A31)
 
 
-@pytest.mark.parametrize("kind", ["BIOPSY", "STOOL"])
-def test_l01_opens_after_pickup_time_and_closes_on_handoff(service, clock, kind):
-    entry_id = biopsy(service, kind=kind)
+def test_l01_opens_after_pickup_time_and_closes_on_handoff(service, clock):
+    entry_id = biopsy(service)
     at(service, clock, kst(2026, 11, 5, 14, 59))
     assert open_tasks(service, "PATH.L01") == []
     at(service, clock, kst(2026, 11, 5, 15, 1))
@@ -83,6 +82,13 @@ def test_l01_opens_after_pickup_time_and_closes_on_handoff(service, clock, kind)
     service.handoff("테스트 접수", "테스트 인계", "테스트 수령", 1)
     assert open_tasks(service, "PATH.L01") == []
     assert [t.status for t in service.tasks.store.tasks()] == ["AUTO_RESOLVED"]
+
+
+def test_stool_waits_for_results_without_an_l01_handoff_task(service, clock):
+    entry_id = biopsy(service, kind="STOOL")
+    at(service, clock, kst(2026, 11, 5, 23, 0))
+    assert open_tasks(service, "PATH.L01") == []
+    assert service.snapshot(ledger="fobt")["stages"][entry_id] == "RESULT_PENDING"
 
 
 def test_l01_never_for_rut_and_wednesday_pickup_is_11(service, clock):
@@ -109,7 +115,7 @@ def test_handoff_due_moves_to_next_pickup_on_closed_days():
 # ---------- L02 결과 지연 — 화면의 '지연' 표시와 같은 순간에 생긴다
 
 
-@pytest.mark.parametrize("kind", ["BIOPSY", "CLO"])
+@pytest.mark.parametrize("kind", ["BIOPSY", "CLO", "STOOL"])
 def test_l02_matches_the_dashboard_delay_on_every_day(service, clock, kind):
     entry_id = biopsy(service, kind=kind)
     if kind == "BIOPSY":

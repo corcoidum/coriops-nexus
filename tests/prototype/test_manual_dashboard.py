@@ -521,7 +521,7 @@ def register_data(**overrides: str) -> dict[str, str]:
 
 
 @pytest.mark.parametrize(("kind", "expected"), [
-    ("BIOPSY", "HANDOFF_PENDING"), ("STOOL", "HANDOFF_PENDING"), ("CLO", "RESULT_PENDING"),
+    ("BIOPSY", "HANDOFF_PENDING"), ("STOOL", "RESULT_PENDING"), ("CLO", "RESULT_PENDING"),
 ])
 def test_register_puts_new_exam_in_the_right_first_stage(client, app, kind, expected):
     response = post(client, app, "/ledger/register", **register_data(kind=kind))
