@@ -29,7 +29,7 @@
   {% if lab %}
   <nav class="nav-group blood" aria-label="혈액">
   <div class="sidebar-section">혈액</div>
-  <a class="nav-item {% if nav == '/lab' and stage != 'CRITICAL_PENDING' %}active{% endif %}" href="/lab"><span aria-hidden="true">◉</span> 혈액검체 장부</a>
+  <a class="nav-item {% if (nav == '/lab' and stage != 'CRITICAL_PENDING') or nav.startswith('/lab/pdf/') %}active{% endif %}" href="/lab"><span aria-hidden="true">◉</span> 혈액검체 장부</a>
   <a class="nav-item {% if nav == '/lab/paper' %}active{% endif %}" href="/lab/paper"><span aria-hidden="true">▤</span> 종이 대장 대조</a>
   </nav>
   {% endif %}

@@ -1,0 +1,33 @@
+version: '1'
+# 미리보기는 메모리에만 두고 세션·접수 회차에 묶는다. 원문·파일명은 저장하지 않는다.
+limits:
+  maximum_upload_bytes: 5242880
+  maximum_multipart_overhead_bytes: 65536
+  maximum_pages: 10
+  maximum_text_characters: 150000
+  memory_megabytes: 512
+  timeout_seconds: 8
+  preview_minutes: 15
+  maximum_previews: 50
+  maximum_parallel_extractions: 1
+headers:
+  chart_no: [CHART_NO, 차트번호]
+  patient_name: [PATIENT_NAME, 수진자명, 성명]
+  report_ref: [REPORT_REF, 접수번호]
+  received_date: [RECEIVED_DATE, 접수일, 검사일]
+  report_date: [REPORT_DATE, 보고일, 결과보고일, 회신날짜]
+# A20·L18에서 확인한 보험코드만 대응한다. 검사 분류나 임상 의미를 추정하지 않는다.
+insurance_codes:
+  D0002050: Hb
+  D3022: Glu
+  D2280: Cr
+  D1860: AST
+  D1850: ALT
+  D1890: GGT
+  D2611: CHOL
+  D2263: TG
+  D2613: HDL
+  D2420020: AFP
+  D7015: HBsAg
+  D7018: Anti-HBs
+  D7026: Anti-HCV

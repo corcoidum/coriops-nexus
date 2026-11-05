@@ -35,7 +35,7 @@ class LabItem:
     name: str
     value: str
     flag: str | None = None  # 씨젠의 H/L 표시. None이면 정상범위
-    critical: bool = False  # 씨젠이 위급치로 표시한 항목만 True. 시스템이 계산하지 않는다
+    critical: bool = False  # 관리자가 확인 후 표기한다. 시스템이 수치로 계산하지 않는다.
 
 
 @dataclass(frozen=True, repr=False)
