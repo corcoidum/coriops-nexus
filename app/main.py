@@ -19,6 +19,8 @@ from starlette.formparsers import MultiPartParser
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.home import router as home_router
+from app.routes_tasks import router as task_router
+from app.task_dashboard import TaskDashboardService
 from app.kernel.access_log import AccessLogger
 from app.kernel.auth import AuthService
 from app.kernel.network import NetworkPolicy
@@ -49,6 +51,7 @@ def create_app(service: ManualDashboardService | None = None, csrf_token: str | 
     app = FastAPI(title="CoriOps Nexus · 조직검체 장부", docs_url=None, redoc_url=None, openapi_url=None)
     service = service or default_service()
     app.state.dashboard_service = service
+    app.state.task_service = TaskDashboardService(service.tasks, service.task_source, service.transaction)
     if service.persistent:
         # DB에 저장하는 한 로그인·접속기록을 끌 수 없다.
         engine = service.engine
@@ -133,6 +136,7 @@ def create_app(service: ManualDashboardService | None = None, csrf_token: str | 
     app.mount("/static", StaticFiles(directory=web / "static"), name="static")
     app.include_router(auth_router)
     app.include_router(home_router)
+    app.include_router(task_router)
     app.include_router(router)
     if app.state.lab_service is not None:
         app.include_router(lab_router)

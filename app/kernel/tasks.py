@@ -456,6 +456,9 @@ class TaskEngine:
             return None
         return self.run()
 
+    def now(self) -> datetime:
+        return self._clock.now()
+
     def close(self, task_id: UUID, status: str, by: str, note: str = "") -> Task:
         """사람이 닫는다. DONE(확인 완료) 또는 DISMISSED(해당 없음, 사유 필수)."""
         note = note.strip()

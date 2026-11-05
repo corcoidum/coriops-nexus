@@ -13,7 +13,7 @@
 {% set critical_count = lab.critical_pending_count() if (lab and can_view) else 0 %}
 <aside class="sidebar">
   <a class="brand" href="/"><span class="brand-mark">C</span><span>CoriOps<span class="brand-sub">NEXUS</span></span></a>
-  <a class="nav-item nav-home {% if nav == '/' %}active{% endif %}" href="/"><span aria-hidden="true">⌂</span> 오늘 할 일</a>
+  <a class="nav-item nav-home {% if nav in ['/', '/tasks'] %}active{% endif %}" href="/"><span aria-hidden="true">⌂</span> 오늘 할 일</a>
   {% if can_view %}
   {% if lab %}
   <a class="nav-item nav-critical {% if critical_count %}has-pending{% endif %} {% if nav == '/critical' or (nav == '/lab' and stage == 'CRITICAL_PENDING') %}active{% endif %}" href="/critical"><span aria-hidden="true">!</span> 위급치 보고 <span class="nav-badge" aria-label="보고 대기 {{ critical_count }}건">{{ critical_count }}</span></a>
