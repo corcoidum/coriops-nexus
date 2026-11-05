@@ -664,6 +664,37 @@ def test_lab_migration_can_downgrade_and_upgrade_again(clean):
     assert "lab_cases" in inspect(clean).get_table_names()
 
 
+def test_pdf_confirmation_audit_failure_rolls_back_and_preserves_preview(parts, monkeypatch):
+    from pdf_helpers import pdf_bytes
+    app, auth, logger, _ = parts
+    make_staff(auth, "pdfadmin", ["ADMIN"])
+    with client_for(app) as client:
+        login(client, "pdfadmin")
+        token = csrf(client)
+        lab_intake(client, token, chart_no="T-PDF0001", patient_name="테스트PDF",
+                   exam_kinds=["일반검진6종", "추가b형간염", "추가c형간염"])
+        case = app.state.lab_service.snapshot()["cases"][0]
+        response = client.post(f"/lab/pdf/preview/{case.id}", data={"csrf_token": token},
+                               files={"file": ("synthetic.pdf", pdf_bytes())}, follow_redirects=False)
+        assert response.status_code == 303
+        preview_token = response.headers["location"].rsplit("/", 1)[1]
+        path = f"/lab/pdf/commit/{preview_token}"
+        original = logger.record
+        def fail(**kwargs):
+            original(**kwargs)
+            if kwargs["target_type"] == "lab_pdf_commit":
+                raise RuntimeError("SYNTHETIC_AUDIT_FAILURE")
+        monkeypatch.setattr(logger, "record", fail)
+        with pytest.raises(RuntimeError):
+            client.post(path, data={"csrf_token": token, "acknowledged": "1"})
+        assert app.state.lab_service.case(case.id) == case
+        assert client.get(response.headers["location"]).status_code == 200
+        monkeypatch.setattr(logger, "record", original)
+        assert client.post(path, data={"csrf_token": token, "acknowledged": "1"}).status_code == 200
+        assert app.state.lab_service.case(case.id).result_entered_by == "pdfadmin"
+        assert app.state.lab_service.case(case.id).version == 2
+
+
 # ---------- 접속 대역 제한 (고시 제6조①)
 
 def test_outside_network_is_denied_and_logged(parts, clean):

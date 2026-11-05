@@ -32,6 +32,8 @@ from app.modules.endoscopy_pathology.manual_dashboard import ManualDashboardServ
 from app.modules.endoscopy_pathology.routes_manual_dashboard import router
 from app.modules.screening_lab.dashboard import LabDashboardService
 from app.modules.screening_lab.store import PostgresLabStore
+from app.modules.screening_lab.pdf_assist import PdfAssist
+from app.modules.screening_lab.routes_pdf import router as pdf_router
 from app.modules.screening_lab.routes_dashboard import router as lab_router
 
 
@@ -65,6 +67,7 @@ def create_app(service: ManualDashboardService | None = None, csrf_token: str | 
     # 환자·권한·접속기록과 같은 엔진을 써서 혈액 변경도 동일 트랜잭션에서 확정한다.
     app.state.lab_service = (LabDashboardService(clock=service.clock, store=PostgresLabStore(service.engine))
                              if service.persistent else (lab_service or LabDashboardService(clock=service.clock)))
+    app.state.pdf_assist = PdfAssist(app.state.lab_service)
     # 업로드 엑셀이 임시 디스크 파일로 넘어가지 않게, 허용 크기까지 메모리에 둔다.
     MultiPartParser.spool_max_size = max(MultiPartParser.spool_max_size, service.max_upload_bytes + 64 * 1024)
     app.state.csrf_token = csrf_token or secrets.token_urlsafe(32)
@@ -93,6 +96,14 @@ def create_app(service: ManualDashboardService | None = None, csrf_token: str | 
         if request.method == "POST" and not same_origin(request):
             return error_page(request, "다른 사이트에서 보낸 요청은 받지 않습니다.", 403)
         path = request.url.path
+        if request.method == "POST" and path.startswith("/lab/pdf/"):
+            # multipart이 파일을 임시 디스크로 넘기기 전에 요청 크기를 제한한다.
+            length = request.headers.get("content-length", "")
+            if not length.isdigit() or request.headers.get("transfer-encoding"):
+                return error_page(request, "크기를 확인할 수 없는 PDF 요청입니다.", 411)
+            limits = app.state.pdf_assist.limits
+            if int(length) > limits["maximum_upload_bytes"] + limits["maximum_multipart_overhead_bytes"]:
+                return error_page(request, "PDF 허용 크기를 초과했습니다.", 413)
         if app.state.auth is None:
             request.state.actor = demo_actor(app.state.csrf_token)
             return await call_next(request)
@@ -142,6 +153,7 @@ def create_app(service: ManualDashboardService | None = None, csrf_token: str | 
     app.include_router(router)
     if app.state.lab_service is not None:
         app.include_router(lab_router)
+        app.include_router(pdf_router)
     return app
 
 

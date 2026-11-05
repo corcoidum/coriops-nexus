@@ -75,6 +75,7 @@
           {% if not actor.can('ledger.result') and sel != 'DONE' %}<p class="form-intro">조회 가능한 기록입니다. 결과·보고·확인은 담당 권한의 계정으로 기록합니다.</p>{% else %}
           {% if sel == 'RESULT_PENDING' %}
           <p class="form-intro">씨젠 결과지(PDF)를 보고 <strong>판정이 H·L인 항목만</strong> 옮겨 적습니다. 값을 판단하거나 계산하지 않습니다.</p>
+          <p><a class="button secondary" href="/lab/pdf/{{ selected.id }}">PDF 결과 입력 보조 →</a></p>
           <form action="/lab/cases/{{ selected.id }}/result" method="post" class="lab-result-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="field-row"><div><label for="report_ref">씨젠 접수번호 <span class="required">필수</span></label><input id="report_ref" name="report_ref" maxlength="30" required value="{{ r.report_ref }}" autocomplete="off"></div>

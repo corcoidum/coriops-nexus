@@ -1,4 +1,4 @@
-"""혈액검체 결과 확인 흐름을 합성 자료로 확인하는 메모리 서비스. 영구 저장하지 않는다.
+"""혈액검체 접수·결과·확인 서비스. 메모리 시연과 PostgreSQL 저장소를 같은 흐름으로 사용한다.
 
 결과 해석·위급치 판정은 하지 않는다. 직원은 씨젠 결과지(PDF)에서 H/L로 표시된 항목과
 정성 검사 Neg/Pos만 옮겨 적고(B14·B16), 위급치는 관리자가 확인한 뒤 표기한다(B15).
@@ -59,6 +59,15 @@ class LabDashboardService:
 
     def transaction(self):
         return self._store.transaction()
+
+    def now(self):
+        return self._clock.now()
+
+    def case(self, case_id: UUID) -> LabCase:
+        return self._get(case_id)
+
+    def required_qualitative(self, exam_kinds: tuple[str, ...]) -> tuple[str, ...]:
+        return self._policy.qualitative_for(exam_kinds)
 
     def register(self, *, chart_no: str, patient_name: str, received_date: date | None,
                  exam_kinds: list[str], registered_by: str, sex: str = "", age: str = "",
