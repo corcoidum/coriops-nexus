@@ -1,6 +1,6 @@
 # Ontology 데이터 사전
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `7c89601323c341de2bf088f8aebbc41710b99e016ebff955eab44cd1803746e4`
+> 원천: `ontology/coriops.yaml` · SHA-256 `c65e6059f4f9086321f4652afe28af048c4c035e28e565cfc06bcee17df23933`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 실제 운영 흐름(A04~A13)에 맞춘 정식 모델이다. `implemented`는 실제 테이블이 있고 시험(`tests/prototype/test_ontology.py`)이 열·타입·NULL·FK·UNIQUE 일치를 검사한다. `planned`는 표시된 단계에서 구현한다.
@@ -29,6 +29,7 @@
 | [ResultCode](#resultcode) | endoscopy_pathology | 구현됨 | 등록값 `config/result_codes.yaml` | 등록 결과 코드. 화면에서 편집하지 않는다 |
 | [Rule](#rule) | kernel | 구현됨 | 테이블 `rules` | 상태·기한·누락을 찾는 규칙 1개. 제목·담당·일수는 config/rules.yaml에서 맞춘다 |
 | [RuleRun](#rulerun) | kernel | 구현됨 | 테이블 `rule_runs` | 규칙 실행 1회. 전체(ALL) 또는 방금 바뀐 검사(SUBJECTS) |
+| [LabReceipt](#labreceipt) | screening_lab | 구현됨 | 테이블 `lab_cases` | 공통 환자에 연결된 혈액 접수·결과·직원 처리 사실. 임상 판단은 하지 않는다 |
 | [Task](#task) | kernel | 구현됨 | 테이블 `tasks` | 규칙이 만든 할 일 1건. 같은 규칙·대상·기준날짜는 한 번만 |
 
 ## 공통 필드
@@ -375,6 +376,38 @@ Sydney 표기 HP-/Neu++/Mon++/Atr+/IM-의 구조화
 | error_code | string | 허용 | — |
 
 제약: 이름·차트번호를 기록하지 않음 / 실패해도 업무 기록은 되돌리지 않고 실패만 남김
+
+### LabReceipt
+
+공통 환자에 연결된 혈액 접수·결과·직원 처리 사실. 임상 판단은 하지 않는다
+
+위치 `screening_lab` · 구현됨 · 테이블 `lab_cases` · FHIR `DiagnosticReport`
+
+| 필드 | 타입 | NULL | 제약 |
+|---|---|---|---|
+| patient_id | uuid | 금지 | FK → Patient |
+| received_date | date | 금지 | — |
+| report_ref | string | 금지 | — |
+| sex | string | 허용 | — |
+| age | string | 허용 | — |
+| exam_kinds | jsonb | 금지 | — |
+| entrusted_date | date | 허용 | — |
+| report_date | date | 허용 | — |
+| items | jsonb | 금지 | — |
+| result_received | boolean | 금지 | — |
+| followup_note | string | 허용 | — |
+| critical_marked_at | timestamptz | 허용 | — |
+| critical_reported_at | timestamptz | 허용 | — |
+| result_entered_at | timestamptz | 허용 | — |
+| checked_at | timestamptz | 허용 | — |
+| critical_marked_by | string | 금지 | — |
+| critical_reported_by | string | 금지 | — |
+| result_entered_by | string | 금지 | — |
+| checked_by | string | 금지 | — |
+| registered_by | string | 금지 | — |
+| version | integer | 금지 | — |
+
+제약: 공통 환자 대조 / 비어 있지 않은 접수번호 유일 / version 낙관적 동시성 제어
 
 ### Task
 

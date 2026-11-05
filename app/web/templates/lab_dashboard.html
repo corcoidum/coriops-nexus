@@ -4,12 +4,14 @@
 {% if stage == 'CRITICAL_PENDING' %}/critical{% if selected_id %}?selected_id={{ selected_id }}{% endif %}{% else %}/lab?stage={{ stage }}{% if selected_id %}&amp;selected_id={{ selected_id }}{% endif %}{% endif %}
 {%- endmacro %}
 {% block crumb %}{% if critical_view %}위급치 보고{% else %}<span class="ledger-chip blood">혈액</span> 혈액검체 장부{% endif %}{% endblock %}
-{% block footer %}<span>CoriOps Nexus <span class="footer-dot">·</span> 혈액검체 장부 (합성 시연)</span><span>씨젠 결과 → 위급치 원장 보고 → 직원 확인</span>{% endblock %}
+{% block footer %}<span>CoriOps Nexus <span class="footer-dot">·</span> 혈액검체 장부 {% if lab_persistent %}(DB 저장){% else %}(합성 시연){% endif %}</span><span>씨젠 결과 → 위급치 원장 보고 → 직원 확인</span>{% endblock %}
 {% block content %}
-    <div class="demo-banner"><strong>합성 자료로 눌러보세요.</strong><span>혈액검체 탭은 아직 저장하지 않는 시연입니다. 실제 결과를 입력하지 않습니다.</span>
-      <form action="/lab/reset" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" type="submit">↻ 시연 처음부터</button></form></div>
+    {% if lab_persistent %}<div class="demo-banner"><strong>DB 저장 모드</strong><span>혈액 접수·결과·보고·확인을 저장하고 로그인 계정을 기록합니다. 운영 승인 전 합성 자료로 검증하세요.</span></div>{% else %}
+    <div class="demo-banner"><strong>합성 자료로 눌러보세요.</strong><span>이 시연의 입력은 재시작하면 초기화됩니다. 실제 결과를 입력하지 않습니다.</span>
+      <form action="/lab/reset" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" type="submit">↻ 시연 처음부터</button></form></div>{% endif %}
     <div class="page-heading"><div>{% if critical_view %}<span class="eyebrow">CRITICAL REPORT</span><h1>위급치 보고</h1><p>관리자가 위급치로 표기한 혈액검체의 원장 보고 대기 {{ cases|length }}건입니다. 보고 완료 후 다음 대기 건으로 이어집니다.</p>{% else %}<span class="eyebrow"><span class="ledger-chip blood">혈액</span> SCREENING LAB</span><h1>검진 혈액검체 장부</h1><p>씨젠 결과 → 위급치 원장 보고 → 직원 확인을 한 화면에서 이어 갑니다.</p>{% endif %}</div></div>
 
+    {% if not critical_view and actor.can('ledger.register') %}<p><a class="button primary" href="/lab?new=1">＋ 새 검사 접수</a></p>{% endif %}
     {% if not critical_view %}
     <section class="stat-grid four" aria-label="업무 단계별 건수">
       {% for key, label in stage_labels.items() %}
@@ -48,7 +50,19 @@
       </section>
 
       <section class="panel detail" aria-labelledby="detail-title">
-      {% if selected %}{% set sel = selected.stage %}{% set r = selected.record %}
+      {% if new %}
+        <div class="detail-header"><span class="eyebrow">NEW LAB</span><h2 id="detail-title">혈액 새 검사 접수</h2></div>
+        <div class="detail-body"><form action="/lab/cases" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="intake_id" value="{{ intake_id }}">
+          <label for="received_date">접수일 <span class="required">필수</span></label><input type="date" id="received_date" name="received_date" value="{{ today.isoformat() }}" max="{{ today.isoformat() }}" required>
+          <label for="chart_no">차트번호 <span class="required">필수</span></label><input id="chart_no" name="chart_no" maxlength="{{ registration.chart_max_length }}" required autocomplete="off">
+          <label for="patient_name">성명 <span class="required">필수</span></label><input id="patient_name" name="patient_name" maxlength="{{ registration.patient_name_max_length }}" required autocomplete="off">
+          <div class="field-row"><div><label for="sex">성별</label><select id="sex" name="sex"><option value="">선택</option>{% for sex in registration.sexes %}<option value="{{ sex }}">{{ sex }}</option>{% endfor %}</select></div><div><label for="age">나이</label><input id="age" name="age" type="number" min="0" max="{{ registration.maximum_age }}"></div></div>
+          <fieldset class="lab-rows"><legend>검사 분류 (실시 항목 선택)</legend>{% for kind in exam_kinds %}<label class="check-line"><input type="checkbox" name="exam_kinds" value="{{ kind }}"><span>{{ kind }}</span></label>{% endfor %}</fieldset>
+          <p class="field-help">접수 후 결과 대기 상태로 등록합니다. 결과 해석·검사 분류의 자동 판단은 하지 않습니다.</p>
+          <button class="button primary full" type="submit">접수 기록 →</button>
+        </form></div>
+      {% elif selected %}{% set sel = selected.stage %}{% set r = selected.record %}
         <div class="detail-header"><span class="eyebrow">NEXT ACTION</span><h2 id="detail-title">{{ stage_actions[sel] }}</h2><div class="detail-person">{{ r.patient_name }}<span>{{ r.chart_no }} · {{ r.sex or '-' }} · {{ r.age or '-' }}세</span></div></div>
         <div class="detail-body">
           <dl class="result-preview">
@@ -58,6 +72,7 @@
             {% if r.report_date and r.items %}<div><dt>회신날짜</dt><dd>{{ r.report_date.strftime('%Y.%m.%d') }}</dd></div>{% endif %}
             <div><dt>결과</dt><dd>{% if results[selected.id] %}<span class="finding-text">{{ results[selected.id] }}</span>{% else %}미수신{% endif %}</dd></div>
           </dl>
+          {% if not actor.can('ledger.result') and sel != 'DONE' %}<p class="form-intro">조회 가능한 기록입니다. 결과·보고·확인은 담당 권한의 계정으로 기록합니다.</p>{% else %}
           {% if sel == 'RESULT_PENDING' %}
           <p class="form-intro">씨젠 결과지(PDF)를 보고 <strong>판정이 H·L인 항목만</strong> 옮겨 적습니다. 값을 판단하거나 계산하지 않습니다.</p>
           <form action="/lab/cases/{{ selected.id }}/result" method="post" class="lab-result-form">
@@ -86,7 +101,7 @@
               {% for name in qualitative_items %}<div class="lab-qual-row"><input type="hidden" name="qual_name" value="{{ name }}"><label for="qual_{{ loop.index }}">{{ name }}</label>
                 <select id="qual_{{ loop.index }}" name="qual_value" {% if name in required_quals %}required{% endif %}><option value="">결과 선택</option>{% for value in qualitative_values %}<option value="{{ value }}">{{ value }}</option>{% endfor %}</select></div>{% endfor %}
             </fieldset>{% endif %}
-            <label for="entered_by">입력한 직원 <span class="required">필수</span></label><input id="entered_by" name="entered_by" maxlength="20" required autocomplete="off">
+            {% if not lab_persistent %}<label for="entered_by">입력한 직원 <span class="required">필수</span></label><input id="entered_by" name="entered_by" maxlength="20" required autocomplete="off">{% else %}<p class="field-help">기록 계정: {{ actor.label }}</p>{% endif %}
             <button class="button primary full" type="submit">결과 저장 <span aria-hidden="true">→</span></button>
           </form>
           {% elif sel == 'CRITICAL_PENDING' %}
@@ -96,7 +111,7 @@
           <form action="/lab/cases/{{ selected.id }}/report-critical" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% if critical_view %}<input type="hidden" name="back" value="critical">{% endif %}
-            <label for="reported_by">보고한 직원 <span class="required">필수</span></label><input id="reported_by" name="reported_by" maxlength="20" required autocomplete="off">
+            {% if not lab_persistent %}<label for="reported_by">보고한 직원 <span class="required">필수</span></label><input id="reported_by" name="reported_by" maxlength="20" required autocomplete="off">{% else %}<p class="field-help">보고 기록 계정: {{ actor.label }}</p>{% endif %}
             <button class="button primary full" type="submit">원장 보고 완료 기록 <span aria-hidden="true">→</span></button>
           </form>
           {% else %}
@@ -109,7 +124,7 @@
             <form action="/lab/cases/{{ selected.id }}/mark-critical" method="post">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               {% for item in flagged %}<label class="check-line"><input type="checkbox" name="critical_items" value="{{ item.name }}"> {{ item.name }} {{ item.value }} {{ item.flag }}</label>{% endfor %}
-              <label for="marked_by">확인한 관리자 <span class="required">필수</span></label><input id="marked_by" name="marked_by" maxlength="20" required autocomplete="off">
+              {% if not lab_persistent %}<label for="marked_by">확인한 관리자 <span class="required">필수</span></label><input id="marked_by" name="marked_by" maxlength="20" required autocomplete="off">{% else %}<p class="field-help">표기 계정: {{ actor.label }}</p>{% endif %}
               <button class="button secondary full" type="submit">위급치로 표기</button>
             </form>
           </details>
@@ -117,14 +132,14 @@
           <p class="form-intro">결과를 장부와 대조한 뒤 확인한 직원을 기록합니다.</p>
           <form action="/lab/cases/{{ selected.id }}/check" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label for="checked_by">확인한 직원 <span class="required">필수</span></label><input id="checked_by" name="checked_by" maxlength="20" required autocomplete="off">
+            {% if not lab_persistent %}<label for="checked_by">확인한 직원 <span class="required">필수</span></label><input id="checked_by" name="checked_by" maxlength="20" required autocomplete="off">{% else %}<p class="field-help">확인 기록 계정: {{ actor.label }}</p>{% endif %}
             <label for="followup_note">비고란 <span class="optional">선택</span></label><input id="followup_note" name="followup_note" maxlength="40" placeholder="예: 11/20 재검 안내함" autocomplete="off">
             <p class="field-help">추후 관리가 필요할 때만 짧게 적습니다. 판독·진단 문장은 적지 않습니다.</p>
             <button class="button primary full" type="submit">확인 완료 기록 <span aria-hidden="true">→</span></button>
           </form>
           {% else %}
           <div class="complete-note"><strong>✓ 확인된 기록입니다.</strong><p>{{ selected.checked_by }} · {{ selected.checked_at.astimezone(kst).strftime('%Y.%m.%d %H:%M') }}</p>{% if r.followup_note %}<p>비고란: {{ r.followup_note }}</p>{% endif %}</div>
-          {% endif %}{% endif %}
+          {% endif %}{% endif %}{% endif %}
         </div>
       {% else %}<div class="detail-body empty-state"><h2 id="detail-title">남은 업무가 없습니다</h2><a href="/lab">전체 보기</a></div>{% endif %}
       </section>

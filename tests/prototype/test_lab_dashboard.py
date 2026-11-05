@@ -87,6 +87,18 @@ def test_unknown_stage_rejected(client):
     assert client.get("/lab?stage=NOPE").status_code == 422
 
 
+@pytest.mark.parametrize("changes", [
+    {"chart_no": ""}, {"patient_name": ""}, {"received_date": "2026-11-06"},
+    {"exam_kinds": ["UNKNOWN"]}, {"exam_kinds": []}, {"age": "131"}, {"age": "-1"}, {"sex": "UNKNOWN"},
+])
+def test_intake_validates_identity_date_and_classification(client, app, changes):
+    data = {"chart_no": "T-L0300", "patient_name": "테스트접수", "received_date": "2026-11-05",
+            "exam_kinds": ["일반검진6종"], "csrf_token": app.state.csrf_token}
+    data.update(changes)
+    assert client.post("/lab/cases", data=data).status_code == 422
+    assert lab(app).snapshot()["total"] == 10
+
+
 def test_critical_must_be_reported_before_check(client, app):
     case = first_in(app, "CRITICAL_PENDING")
     assert "원장 보고 완료 기록" in client.get(f"/lab?selected_id={case.id}").text

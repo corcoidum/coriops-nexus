@@ -1,6 +1,6 @@
 # ERD
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `7c89601323c341de2bf088f8aebbc41710b99e016ebff955eab44cd1803746e4`
+> 원천: `ontology/coriops.yaml` · SHA-256 `c65e6059f4f9086321f4652afe28af048c4c035e28e565cfc06bcee17df23933`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 공통 필드(id·created_at·updated_at)는 모든 테이블에 있다. 관계는 각 클래스의 `references` 필드에서 만든다. JSONB 안에 들어가는 구성 요소(ReportFinding·SydneyGrading)와 config 등록값(ResultCode)은 그림에서 뺐다.
@@ -196,6 +196,32 @@ erDiagram
         integer resolved_count
         string error_code
     }
+    LabReceipt {
+        uuid id PK
+        timestamptz created_at
+        timestamptz updated_at
+        uuid patient_id FK
+        date received_date
+        string report_ref
+        string sex
+        string age
+        jsonb exam_kinds
+        date entrusted_date
+        date report_date
+        jsonb items
+        boolean result_received
+        string followup_note
+        timestamptz critical_marked_at
+        timestamptz critical_reported_at
+        timestamptz result_entered_at
+        timestamptz checked_at
+        string critical_marked_by
+        string critical_reported_by
+        string result_entered_by
+        string checked_by
+        string registered_by
+        integer version
+    }
     Task {
         uuid id PK
         timestamptz created_at
@@ -228,6 +254,7 @@ erDiagram
     ExamResult |o--|| Exam : resultOf
     DoctorReview |o--|| Exam : reviews
     FollowUp |o--|| DoctorReview : plannedBy
+    LabReceipt }o--|| Patient : patient_id
     Task }o--|| Rule : createdBy
     Task }o--|| RuleRun : openedIn
 ```
@@ -253,4 +280,5 @@ erDiagram
 | LedgerExport | `ledger_exports` | 구현됨 |
 | Rule | `rules` | 구현됨 |
 | RuleRun | `rule_runs` | 구현됨 |
+| LabReceipt | `lab_cases` | 구현됨 |
 | Task | `tasks` | 구현됨 |
