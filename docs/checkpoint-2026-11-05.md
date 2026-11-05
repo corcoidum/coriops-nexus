@@ -2,6 +2,16 @@
 
 PR #11을 CI 성공 확인 후 병합했다(기준 main `1064fa3`). 합성 메모리 시연과 DB 저장 모드는 구분한다. 실데이터 운영 승인은 포함하지 않는다.
 
+| 순서 | 검토 PR | 기반 브랜치 |
+|---|---|---|
+| 1 | [#12 담당별 Task 처리](https://github.com/corcoidum/coriops-nexus/pull/12) | `main` |
+| 2 | [#13 혈액 접수·영구 저장](https://github.com/corcoidum/coriops-nexus/pull/13) | `codex/role-task-dashboard` |
+| 3 | [#14 PDF 입력 보조](https://github.com/corcoidum/coriops-nexus/pull/14) | `codex/lab-persistence` |
+| 4 | [#15 공통 Recall 조회](https://github.com/corcoidum/coriops-nexus/pull/15) | `codex/lab-pdf-assist` |
+| 5 | [#16 합성 DB 백업·복원 리허설](https://github.com/corcoidum/coriops-nexus/pull/16) | `codex/recall-registry` |
+
+위 PR은 순서대로 앞 단계에 의존하며 아직 병합하지 않았다. 전체 구현은 `codex/backup-rehearsal`에 있다. 집 PC에서는 이 브랜치를 checkout하고, 개인 설정·DB·업로드·키는 Git으로 옮기지 않는다.
+
 ## 담당별 할 일
 
 - `/`의 장부별 카드는 유지하고 내 역할의 할 일 건수와 `/tasks` 연결을 추가했다.
@@ -30,7 +40,15 @@ PR #11을 CI 성공 확인 후 병합했다(기준 main `1064fa3`). 합성 메�
 
 `/recalls`는 등록된 제공자를 통해 원본 재검 예정일·시행 완료·기록자·상세 링크를 조회한다. 현재 ENDOSCOPY만 조립하며 도래·경과/이후 예정/완료/미완료 전체와 예정일 기간을 선택한다. 원본 일정을 복제하거나 다음 주기를 계산하지 않는다. 새 종류는 업무 기준을 정한 뒤 등록한다. PostgreSQL 전체 시험 576건 통과, 실제 Chrome에서 원본 재검 시행 완료 후 Recall 완료 목록 반영을 확인했다.
 
-## 앱 실행
+## 암호화 백업·복원 리허설
+
+`python scripts/verify_backup.py`는 무작위 이름의 별도 Compose 프로젝트에 합성 DB 2개를 만들고 계정·혈액 결과·접속기록을 생성한다. 공개 recipient로 pg_dump를 age 암호화하고, 암호문 인증 후 비어 있는 합성 DB에 단일 트랜잭션으로 복원한다. 원본 업무 값과 접속기록 해시 체인을 재검증한다. 잘못된 키·변조·비어 있지 않은 대상과 명시적 허용/합성 DB 이름 경계도 확인한다. 종료 시 전용 프로젝트·임시 키·암호문만 정리하며 기존 DB에는 접속하지 않는다. GitHub CI에도 같은 리허설을 추가했다.
+
+Linux에서는 백업 도구를 호스트 실행자 UID/GID로 실행해 bind mount 소유권을 맞춘다. 디렉터리 권한을 넓히거나 컨테이너의 제한 권한을 풀지 않는다.
+
+운영 PC의 HTTPS·접속 대역·권한 승인·보관 정책·백업 경로와 키 담당·복구 시간 측정은 별도 OPS/정책 확인이다. 자동 백업 일정·보관기간 삭제·실데이터 운영 전환은 이번 검증으로 켜지 않는다. 상세: [백업 리허설](backup-rehearsal.md).
+
+## 로컬 앱 실행
 
 ```powershell
 docker compose -f docker-compose.prototype.yml --profile dashboard up -d --build dashboard
@@ -40,4 +58,6 @@ docker compose -f docker-compose.prototype.yml --profile dashboard up -d --build
 
 ## 검증과 다음 단계
 
-Task 단계: PostgreSQL 16 전체 pytest 548건, pyflakes·문서 일치 검사 통과. 실제 Chrome에서 원본 업무 열기 → 처리 기록 → 열린 업무 8→7 → 처리됨 표시와 390px 화면을 확인했다. 혈액 DB 저장·PDF·Recall·백업은 각각 별도 변경으로 기록한다. 운영 PC·실제 환자자료·법적 적합성은 합성 시험의 통과 범위 밖이다.
+통합 코드에서 PostgreSQL 16 전체 pytest **576건**, pyflakes·문서 일치 검사, 합성 DB 암호화 백업·복원 및 거부 경계 리허설을 통과했다. 실제 Chrome에서 원본 업무 열기 → Task 처리 → 열린 업무 8→7 → 처리됨 표시와 390px 화면을 확인했다. 혈액 DB 재시작 보존·PDF 확인 저장·원본 재검 완료의 Recall 반영도 확인했다. 최신 합성 앱 `8765`에서 홈·Task·Recall·혈액 접수 화면을 다시 열어 확인했다.
+
+운영 PC·실제 환자자료·법적 적합성은 합성 시험의 통과 범위 밖이다. 다음 검토는 PR #12부터 순서대로 진행하고, 실제 결과지와 같은 구조의 합성 PDF 서식 대조 및 운영 복구 담당·키 보관·권한 정책 확인을 이어간다.

@@ -32,16 +32,16 @@
 
 | 초안 Phase | 내용 | 상태 | 근거 |
 |---|---|---|---|
-| 0 Foundation | README·개인정보 원칙·Python·pytest·CI·AGENTS.md | ✅ | `pyproject.toml`, `tests/` 299개, `.github/workflows/ci.yml`, `AGENTS.md` |
-| 1 Ontology | Entity·관계·상태·FHIR | ✅ v0.2 | `ontology/coriops.yaml` v0.2 21클래스(구현 18·예정 3)·`scripts/gen_docs.py`·YAML=코드=DB 일치 시험 |
-| 2 PostgreSQL ERD | 테이블·FK·제약·마이그레이션·감사 필드 | ✅ | Alembic 0001~0003. `patients`·`exams`·`specimens`·`exam_results`·`doctor_reviews`·`followups` |
+| 0 Foundation | README·개인정보 원칙·Python·pytest·CI·AGENTS.md | ✅ | PostgreSQL 시험·정적 검사·문서 일치 검사·CI. 실행 증거는 2026-11-05 진행 기록 |
+| 1 Ontology | Entity·관계·상태·FHIR | ✅ | 구현/예정 클래스·`scripts/gen_docs.py`·YAML=코드=DB 일치 시험. FHIR는 개념 대응 |
+| 2 PostgreSQL ERD | 테이블·FK·제약·마이그레이션·감사 필드 | ✅ | Alembic 0001~0005. 공통 환자·조직검체·Task·혈액 접수·결과·처리 |
 | 3 Endoscopy + Specimen MVP | 접수 → 인계 → 결과 → 원장 지시 → 재검 | ✅ | DB 저장 장부, 3자 인계·병 수 대조, 엑셀 가져오기·대조·출력, 종이 대장 ①·② 대조·같은 양식 출력(A15). 장부별 화면: 조직검체·CLO 대장 5열(A27)·분변잠혈 대장(A22) |
 | 4 Rule Engine | 규칙이 누락을 찾아냄 | ✅ | L01~L05(`config/rules.yaml` v0.3), 실행 기록, 중복 방지·자동 해소(B-1) |
 | 5 Task Engine | 담당·상태·출처가 있는 Task | ✅ B-2 | 담당별 목록·기간 필터·확인 완료·해당 없음·접속기록·원본 연결 |
-| 6 Lab Integration | 씨젠 결과 → Observation | ⚪ | — |
+| 6 Lab Integration | 혈액 접수·결과·직원 확인 | 🟡 | DB 저장·로컬 PDF 대조 구현. 실제 서식 호환·검진 후속관리는 추가 확인 |
 | 7 Screening F/U | 검진 결과 후속관리 | ⚪ | — |
 | 8 Recall Engine | 정기 재검·주사·백신 | 🟡 | 내시경 재검만: 재검 도래·기간 필터·대상자 출력 |
-| 9 Dashboard v1.0 | 오늘 놓치면 안 되는 일 | 🟡 | 조직검체·CLO·Stool만 |
+| 9 Dashboard v1.0 | 오늘 놓치면 안 되는 일 | 🟡 | 장부별 현황·역할별 Task·혈액 위급치·현재 내시경 Recall. 다른 Recall 종류는 미조립 |
 | 10~12 Ontology v1.0·FHIR·KG | RDF/OWL/SHACL, FHIR 변환, 그래프 | ⚪ | FHIR 개념 대응 문서만 |
 | 13~14 AI Copilot·Agent Harness | 도구 계층·사람 승인 | ⚪ | 서비스 단일 통로·권한표·접속기록은 준비됨 |
 | 9장 Privacy & Security | 개인 계정·접속기록 | ✅ 2단계 | argon2id 로그인, 권한표, 추가 전용 해시 체인 접속기록 |
@@ -131,7 +131,7 @@
 
 - 원내 HTTPS(Caddy)와 업무 PC IP 허용 대역
 - 접속기록 외부 체크포인트, DB 계정 분리(app·migrator·backup)
-- 암호화 백업과 복원 리허설
+- 암호화 백업·복원 합성 리허설 구현(A37). 실제 원내 백업 경로·최소 권한 계정·키 담당·복원 시간은 OPS 확인이 남음
 - 원장 결재: 엑셀 출력 허용(P12 개정, D10), 보관기간(Q06), 권한표(Q01)
 
 ## 6. Privacy & Security 등급

@@ -8,7 +8,7 @@
 
 내시경 검체 채취 → 수탁 의뢰 → 결과 수신 → 원장 확인 → 환자 안내 → F/U 등록을 관리할 원내 LAN 전용 보조 업무대장이다. 진단·치료·F/U 주기는 원장이 결정한다. 조직검사 결과는 등록된 결과 코드(예: `TA#2(L)`)와 Sydney 등급만 구조화해 저장하고 판독문 원문은 저장하지 않는다(A11, 정식 앱 설계). 연락처, 주소, 주민등록번호, 보험정보는 저장하지 않는다.
 
-**지금은 수동 입력으로 첫 화면을 확인한다.** 씨젠은 직접 확인하고 기존 Excel 장부는 평소대로 관리한다. 자동 로그인·약어 자동 변환은 뒤로 미룬다. 약어 사전 없이 합성 자료 12건으로 **오늘 씨젠 인계(3자·병 수 대조) → 결과 코드 입력 → 원장 지시 기록 → 재검 대상 관리** 흐름을 눌러볼 수 있다. 결과 설명은 EMR에서 관리한다(A12).
+**합성 자료로 업무 흐름을 확인한다.** 씨젠 자동 로그인·약어 자동 해석은 하지 않는다. 조직검체·CLO·분변잠혈·혈액 접수, 담당별 Task, 원본 기반 Recall 조회를 제공한다. 혈액 PDF는 지원 배치를 로컬 추출·대조한 뒤 직원이 확정한다. 결과 설명은 EMR에서 관리한다(A12).
 
 ```sh
 docker compose -f docker-compose.prototype.yml --profile dashboard up -d --build dashboard
@@ -18,7 +18,7 @@ docker compose -f docker-compose.prototype.yml --profile dashboard up -d --build
 
 **DB 저장 장부(A13):** 입력은 앱에서 하고 PostgreSQL이 원본이다. 기존 엑셀(Biopsy·CLO·Stool)은 가져오기·대조에, 엑셀 출력은 지정 원내 폴더에만 쓴다. `.env` 설정 후 `docker compose -f docker-compose.ledger.yml up -d --build` → <http://127.0.0.1:8766/dashboard> · [장부 앱 사용법](docs/ledger-app.md). DB 모드에서는 개인 계정 로그인·접속기록이 항상 켜진다(첫 계정: `python -m app.manage create-staff`). 원장 결재 전에는 합성 자료로만 시험한다.
 
-**합성 시연 전용이며 재시작하면 입력이 초기화된다.** 실제 자료 입력·인증·영구 DB 저장·접속/감사기록·LAN 운영은 정식 앱에서 구현할 후속 범위다. 아래는 최초 Phase 0 설계 기록이며 오늘 시연을 위해 모든 문서를 먼저 검토할 필요는 없다. [17열 Excel 프로토타입](docs/excel-prototype.md)도 유지한다.
+**검증 자료는 합성만 사용한다.** 메모리 시연은 재시작하면 초기화되고, DB 모드는 혈액을 포함한 장부·계정·처리·접속기록을 PostgreSQL에 저장한다. 실제 환자자료·원내 운영 전환에는 권한·보관·운영 검증이 별도로 필요하다. 아래 최초 Phase 설계 기록과 현재 구현을 구분한다. [17열 Excel 프로토타입](docs/excel-prototype.md)도 유지한다.
 
 GitHub 저장소: [corcoidum/coriops-nexus](https://github.com/corcoidum/coriops-nexus). Phase 1은 확인 질문과 승인 후 시작한다.
 
@@ -38,7 +38,7 @@ GitHub 저장소: [corcoidum/coriops-nexus](https://github.com/corcoidum/coriops
 6. [개인정보 대응표](docs/privacy/compliance-matrix.md), [보유·파기 초안](docs/privacy/retention-policy.md)
 7. [확장 계약·Phase Gate](docs/roadmap.md), [검증 계획](docs/verification-plan.md)
 
-`ontology/coriops.yaml`(v0.2)이 클래스·속성·enum·관계·FHIR 대응·단계의 단일 원천이다. `docs/ontology.md`, `erd.md`, `state-machine.md`, `fhir-mapping.md`는 `python scripts/gen_docs.py`로 만들며 직접 고치지 않는다. 시험(`tests/prototype/test_ontology.py`)이 YAML·코드 테이블·생성 문서의 일치를 검사한다. 이전 검토안(0.1-design.2)은 [docs/archive](docs/archive/ontology-0.1-design.2.yaml)에 있다. `config/`는 설계 데이터이며 실행 설정으로 사용하지 않는다.
+`ontology/coriops.yaml`이 클래스·속성·enum·관계·FHIR 대응·단계의 단일 원천이다. `docs/ontology.md`, `erd.md`, `state-machine.md`, `fhir-mapping.md`는 `python scripts/gen_docs.py`로 만들며 직접 고치지 않는다. 시험(`tests/prototype/test_ontology.py`)이 YAML·코드 테이블·생성 문서의 일치를 검사한다. 이전 검토안(0.1-design.2)은 [docs/archive](docs/archive/ontology-0.1-design.2.yaml)에 있다. `config/`의 진료일·업무·권한·입력 제한을 실행 시 읽으며, 가정·승인 상태는 운영 정책의 확정과 구분한다.
 
 ## 지정 기술 스택
 
@@ -60,7 +60,7 @@ Get-Content -Encoding UTF8 .\ontology\coriops.yaml
 docker version
 ```
 
-현재 실행은 `docker-compose.prototype.yml`을 사용한다. [첫 대시보드](docs/manual-dashboard.md) 또는 [Excel 프로토타입](docs/excel-prototype.md)을 시험·시연할 수 있으며, 정식 앱의 Alembic 마이그레이션은 아직 준비되지 않았다. 전체 검증 계획은 [검증 계획](docs/verification-plan.md)을 참고한다.
+합성 시연은 `docker-compose.prototype.yml`, DB 저장은 `docker-compose.ledger.yml`을 사용한다. DB 장부의 Alembic 0001~0005와 upgrade/downgrade 시험을 유지한다. 전체 검증 계획은 [검증 계획](docs/verification-plan.md)을 참고한다. 암호화 백업·복원은 [독립 합성 리허설](docs/backup-rehearsal.md)로 확인한다.
 
 ## 테스트 DB 보호
 

@@ -58,3 +58,7 @@ jobs:
             docker compose -f docker-compose.ledger.yml config --quiet
       - name: 시험 (pytest)
         run: python -m pytest -q
+      - name: 합성 DB 암호화 백업·복원 리허설
+        run: |
+          docker build -f Dockerfile.prototype -t coriops-nexus-prototype:local .
+          python scripts/verify_backup.py

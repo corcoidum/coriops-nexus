@@ -1,0 +1,77 @@
+# 운영 DB와 연결하지 않는 암호화 백업·복원 합성 리허설 전용.
+services:
+  source:
+    image: postgres:16.14-alpine
+    environment:
+      POSTGRES_DB: coriops_backup_demo
+      POSTGRES_USER: backup_demo
+      POSTGRES_PASSWORD: ${CORIOPS_BACKUP_TEST_PASSWORD:?시험 비밀번호 필요}
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U backup_demo -d coriops_backup_demo']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [private]
+  restore:
+    image: postgres:16.14-alpine
+    environment:
+      POSTGRES_DB: coriops_restore_test
+      POSTGRES_USER: backup_demo
+      POSTGRES_PASSWORD: ${CORIOPS_BACKUP_TEST_PASSWORD:?시험 비밀번호 필요}
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U backup_demo -d coriops_restore_test']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [private]
+  keys:
+    build: {context: ., dockerfile: Dockerfile.backup}
+    image: coriops-backup:local
+    entrypoint: []
+    command: [age-keygen, -o, /keys/identity.key]
+    network_mode: none
+    user: '${CORIOPS_BACKUP_TEST_UID:-0}:${CORIOPS_BACKUP_TEST_GID:-0}'
+    read_only: true
+    volumes: ['${CORIOPS_BACKUP_TEST_KEYS:?키 경로 필요}:/keys']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  archive:
+    image: coriops-backup:local
+    user: '${CORIOPS_BACKUP_TEST_UID:-0}:${CORIOPS_BACKUP_TEST_GID:-0}'
+    environment:
+      PGHOST: source
+      PGPORT: '5432'
+      PGDATABASE: coriops_backup_demo
+      PGUSER: backup_demo
+      PGPASSWORD: ${CORIOPS_BACKUP_TEST_PASSWORD:?시험 비밀번호 필요}
+      CORIOPS_BACKUP_RECIPIENT: ${CORIOPS_BACKUP_TEST_RECIPIENT:-}
+      CORIOPS_ALLOW_SYNTHETIC_RESTORE: '1'
+    command: [backup]
+    volumes:
+      - '${CORIOPS_BACKUP_TEST_DIR:?암호문 경로 필요}:/backups'
+      - '${CORIOPS_BACKUP_TEST_KEYS:?키 경로 필요}:/keys:ro'
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [private]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  check:
+    image: coriops-nexus-prototype:local
+    environment:
+      CORIOPS_DATABASE_URL: postgresql+psycopg://
+      PGHOST: source
+      PGPORT: '5432'
+      PGDATABASE: coriops_backup_demo
+      PGUSER: backup_demo
+      PGPASSWORD: ${CORIOPS_BACKUP_TEST_PASSWORD:?시험 비밀번호 필요}
+      CORIOPS_BACKUP_REHEARSAL: '1'
+    command: [python, -m, scripts.backup_seed]
+    volumes: ['./scripts:/workspace/scripts:ro']
+    read_only: true
+    networks: [private]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+networks:
+  private: {internal: true}

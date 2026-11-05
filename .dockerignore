@@ -11,3 +11,6 @@ outputs
 .venv
 **/__pycache__
 .pytest_cache
+.playwright-cli
+*.key
+*.pem
