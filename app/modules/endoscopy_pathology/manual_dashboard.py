@@ -27,6 +27,7 @@ from app.kernel.calendar import ClinicCalendar
 from app.kernel.clock import Clock, SystemClock
 from app.kernel.database import on_rollback, transaction as database_transaction
 from app.kernel.tasks import MemoryTaskStore, PostgresTaskStore, RuleBook, TaskEngine, TaskStore
+from app.kernel.recall import RecallItem
 from app.kernel.web import UserError
 
 from .excel_io import (
@@ -212,6 +213,11 @@ class ManualDashboardService:
             return f"{self.ledger_path_of(task.subject_id)}?selected_id={task.subject_id}"
         except UserError:
             return None
+
+    def recall_items(self) -> list[RecallItem]:
+        return [RecallItem("ENDOSCOPY", entry.id, entry.followup_due, entry.followup_done_on,
+                           entry.followup_done_by, f"/dashboard?selected_id={entry.id}")
+                for entry in self._store.entries() if entry.kind == "BIOPSY" and entry.followup_due]
 
     def ledger_path(self, ledger: str) -> str:
         """폼이 보낸 장부 이름을 알려진 주소로만 바꾼다. 모르는 값이면 조직검체 장부."""

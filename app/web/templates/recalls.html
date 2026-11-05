@@ -1,0 +1,12 @@
+{% extends "ledger_base.html" %}
+{% block title %}공통 재검 현황{% endblock %}
+{% block crumb %}병리 / 공통 재검 현황{% endblock %}
+{% block footer %}<span>CoriOps Nexus · Recall 현황</span><span>원본 계획의 날짜·시행 기록을 조회합니다</span>{% endblock %}
+{% block content %}
+<div class="page-heading"><div><span class="eyebrow">RECALL</span><h1>공통 재검 현황</h1><p>사람이 정한 원본 일정을 조회합니다. 일정 변경·시행 완료는 원본 업무에서 기록합니다.</p></div><a class="text-link" href="/dashboard?stage=FOLLOWUP">내시경 재검 장부</a></div>
+<section class="panel"><form class="paper-filters" action="/recalls" method="get"><div><label for="recall-kind">종류</label><select id="recall-kind" name="kind"><option value="ALL">전체 종류</option>{% for key, label in kinds.items() %}<option value="{{ key }}" {% if kind == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div><input type="hidden" name="bucket" value="{{ bucket }}"><div><label for="recall-start">예정일 시작</label><input type="date" id="recall-start" name="start" value="{{ start.isoformat() if start else '' }}"></div><div><label for="recall-end">예정일 종료</label><input type="date" id="recall-end" name="end" value="{{ end.isoformat() if end else '' }}"></div><button class="button primary" type="submit">조회</button></form></section>
+<nav class="kind-tabs" aria-label="재검 상태">{% for key, label in buckets.items() %}<a class="{% if bucket == key %}active{% endif %}" href="/recalls?kind={{ kind }}&amp;bucket={{ key }}{% if start %}&amp;start={{ start.isoformat() }}{% endif %}{% if end %}&amp;end={{ end.isoformat() }}{% endif %}">{{ label }} {{ counts[key] }}</a>{% endfor %}</nav>
+<section class="panel"><div class="table-scroll"><table><thead><tr><th scope="col">종류</th><th scope="col">사람이 정한 예정일</th><th scope="col">시행 완료</th><th scope="col">기록자</th><th scope="col">원본</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ kinds[row.kind] }}</td><td>{{ row.due_on.isoformat() }}</td><td>{{ row.done_on.isoformat() if row.done_on else '미완료' }}</td><td>{{ row.done_by or '—' }}</td><td><a class="text-link" href="{{ row.source_url }}">원본 업무 열기 →</a></td></tr>{% else %}<tr><td class="empty-state" colspan="5">이 조건의 재검 계획이 없습니다.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}
