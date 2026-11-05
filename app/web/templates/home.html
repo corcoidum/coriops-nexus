@@ -2,6 +2,7 @@
 {% block crumb %}<strong>오늘 할 일</strong>{% endblock %}
 {% block footer %}<span>CoriOps Nexus <span class="footer-dot">·</span> 오늘 할 일</span><span>빨간 항목부터 처리합니다</span>{% endblock %}
 {% block content %}
+    {% if tissue %}<p><a class="text-link" href="/recalls">내시경 재검 · 공통 Recall 현황 →</a></p>{% endif %}
     {% if task_counts is defined %}<div class="notice"><strong>내 역할의 할 일</strong> · 기한 지남 {{ task_counts.overdue }} · 오늘 {{ task_counts.today }} · 이후 대기 {{ task_counts.pending }} <a class="text-link" href="/tasks">할 일 조회·처리 →</a></div>{% endif %}
     <div class="page-heading"><div><span class="eyebrow">TODAY</span><h1>오늘 할 일</h1><p>장부별로 오늘 처리할 건수입니다. 카드를 누르면 해당 장부의 그 목록으로 갑니다.</p></div></div>
     {% if not tissue %}

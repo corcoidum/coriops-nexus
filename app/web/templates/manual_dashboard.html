@@ -85,6 +85,7 @@
           </form>
         </div>
         {% if stage == 'FOLLOWUP' %}
+        <p><a class="text-link" href="/recalls">공통 재검 현황 보기 →</a></p>
         <div class="due-bar">
           <nav class="due-tabs" aria-label="재검 기간">
             {% for key, label in due_labels.items() if key != 'range' %}<a class="{% if due == key %}active{% endif %}" href="{{ link(due=key) }}">{{ label }}{% if key == 'due' and flags.followup_due %} <strong>{{ flags.followup_due }}</strong>{% endif %}</a>{% endfor %}
