@@ -20,6 +20,7 @@ import yaml
 from app.kernel import patients, security_db, tasks
 from app.kernel.access_log import ACTION_LABELS
 from app.modules.endoscopy_pathology import ledger_db
+from app.modules.screening_lab import store as lab_store
 from app.modules.endoscopy_pathology.ledger_db import database_url
 from app.modules.endoscopy_pathology.ledger_model import STAGE_LABELS
 
@@ -27,7 +28,7 @@ from app.modules.endoscopy_pathology.ledger_model import STAGE_LABELS
 ROOT = Path(__file__).resolve().parents[2]
 ONTOLOGY = yaml.safe_load((ROOT / "ontology" / "coriops.yaml").read_text(encoding="utf-8"))
 CLASSES = ONTOLOGY["classes"]
-TABLES = {table.name: table for meta in (security_db.metadata, patients.metadata, tasks.metadata, ledger_db.metadata)
+TABLES = {table.name: table for meta in (security_db.metadata, patients.metadata, tasks.metadata, ledger_db.metadata, lab_store.metadata)
           for table in meta.tables.values()}
 IMPLEMENTED = {name: c for name, c in CLASSES.items() if c["status"] == "implemented" and "table" in c}
 

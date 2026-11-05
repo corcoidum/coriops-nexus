@@ -31,6 +31,7 @@ from app.modules.endoscopy_pathology.ledger_db import PostgresStore
 from app.modules.endoscopy_pathology.manual_dashboard import ManualDashboardService
 from app.modules.endoscopy_pathology.routes_manual_dashboard import router
 from app.modules.screening_lab.dashboard import LabDashboardService
+from app.modules.screening_lab.store import PostgresLabStore
 from app.modules.screening_lab.routes_dashboard import router as lab_router
 
 
@@ -61,8 +62,9 @@ def create_app(service: ManualDashboardService | None = None, csrf_token: str | 
         app.state.network = network or NetworkPolicy.load()
     else:
         app.state.auth, app.state.access_log, app.state.network = None, None, None
-    # 혈액검체 탭은 아직 저장소가 없는 합성 시연이므로 DB 모드에서는 조립하지 않는다.
-    app.state.lab_service = None if service.persistent else (lab_service or LabDashboardService())
+    # 환자·권한·접속기록과 같은 엔진을 써서 혈액 변경도 동일 트랜잭션에서 확정한다.
+    app.state.lab_service = (LabDashboardService(clock=service.clock, store=PostgresLabStore(service.engine))
+                             if service.persistent else (lab_service or LabDashboardService(clock=service.clock)))
     # 업로드 엑셀이 임시 디스크 파일로 넘어가지 않게, 허용 크기까지 메모리에 둔다.
     MultiPartParser.spool_max_size = max(MultiPartParser.spool_max_size, service.max_upload_bytes + 64 * 1024)
     app.state.csrf_token = csrf_token or secrets.token_urlsafe(32)

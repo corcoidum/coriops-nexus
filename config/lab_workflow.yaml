@@ -1,0 +1,8 @@
+version: '1'
+# 합성 검증용 입력 제한. 임상 판단·주기 계산에는 사용하지 않는다.
+registration:
+  chart_max_length: 30
+  patient_name_max_length: 40
+  maximum_age: 130
+  staff_identity_max_length: 30
+  sexes: [M, F]

@@ -1,6 +1,6 @@
 # FHIR 개념 대응
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `7c89601323c341de2bf088f8aebbc41710b99e016ebff955eab44cd1803746e4`
+> 원천: `ontology/coriops.yaml` · SHA-256 `c65e6059f4f9086321f4652afe28af048c4c035e28e565cfc06bcee17df23933`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 참조판: FHIR R4 4.0.1. 아래는 개념 대응이며 FHIR 적합성·profile·변환·서버 구현을 의미하지 않는다(Stage G). [HL7 공식 Resource Index](https://hl7.org/fhir/R4/resourcelist.html)
@@ -27,4 +27,5 @@
 | ResultCode | 구현됨 | CodeSystem.concept |
 | Rule | 구현됨 | PlanDefinition |
 | RuleRun | 구현됨 | 직접 대응 없음 — 내부 운영 엔티티 |
+| LabReceipt | 구현됨 | DiagnosticReport |
 | Task | 구현됨 | Task |

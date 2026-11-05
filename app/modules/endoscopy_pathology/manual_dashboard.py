@@ -155,6 +155,10 @@ class ManualDashboardService:
         return getattr(self._store, "persistent", False)
 
     @property
+    def clock(self) -> Clock:
+        return self._clock
+
+    @property
     def max_upload_bytes(self) -> int:
         return self._security.max_upload_bytes
 

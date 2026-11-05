@@ -326,6 +326,35 @@ classes:
       resolved_count: {type: integer}
       error_code: {type: string, nullable: true}
     constraints: [이름·차트번호를 기록하지 않음, 실패해도 업무 기록은 되돌리지 않고 실패만 남김]
+  LabReceipt:
+    layer: screening_lab
+    description: 공통 환자에 연결된 혈액 접수·결과·직원 처리 사실. 임상 판단은 하지 않는다
+    fhir: DiagnosticReport
+    status: implemented
+    table: lab_cases
+    fields:
+      patient_id: {type: uuid, references: Patient}
+      received_date: {type: date}
+      report_ref: {type: string}
+      sex: {type: string, nullable: true}
+      age: {type: string, nullable: true}
+      exam_kinds: {type: jsonb}
+      entrusted_date: {type: date, nullable: true}
+      report_date: {type: date, nullable: true}
+      items: {type: jsonb}
+      result_received: {type: boolean}
+      followup_note: {type: string, nullable: true}
+      critical_marked_at: {type: timestamptz, nullable: true}
+      critical_reported_at: {type: timestamptz, nullable: true}
+      result_entered_at: {type: timestamptz, nullable: true}
+      checked_at: {type: timestamptz, nullable: true}
+      critical_marked_by: {type: string}
+      critical_reported_by: {type: string}
+      result_entered_by: {type: string}
+      checked_by: {type: string}
+      registered_by: {type: string}
+      version: {type: integer}
+    constraints: [공통 환자 대조, 비어 있지 않은 접수번호 유일, version 낙관적 동시성 제어]
   Task:
     status: implemented
     table: tasks

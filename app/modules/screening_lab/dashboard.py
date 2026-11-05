@@ -6,17 +6,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from datetime import date, datetime
+from dataclasses import replace
+from datetime import date
 from threading import RLock
-from uuid import UUID
+from pathlib import Path
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
+
+import yaml
 
 from app.kernel.clock import Clock, SystemClock
 from app.kernel.web import UserError
 
 from .ledger import NOTE_MAX, LabItem, LabLedgerPolicy, LabRecord, load_policy
 from .ledger_demo import synthetic_records
+from .model import LabCase
+from .store import MemoryLabStore, PostgresLabStore
 
 
 STAGE_LABELS = {
@@ -37,59 +42,63 @@ REF_MAX = 30
 VALUE_MAX = 20
 
 
-@dataclass(frozen=True, repr=False)
-class LabCase:
-    id: UUID
-    record: LabRecord
-    critical_marked_at: datetime | None = None
-    critical_marked_by: str = ""
-    critical_reported_at: datetime | None = None
-    critical_reported_by: str = ""
-    result_entered_at: datetime | None = None
-    result_entered_by: str = ""
-    checked_at: datetime | None = None
-    checked_by: str = ""
-
-    @property
-    def critical(self) -> bool:
-        return any(item.critical for item in self.record.items)
-
-    @property
-    def abnormal(self) -> bool:
-        return any(item.flag for item in self.record.items)
-
-    @property
-    def stage(self) -> str:
-        """화면용 분류. 위급치는 원장 보고를 기록해야 확인 단계로 넘어간다."""
-        if not self.record.received:
-            return "RESULT_PENDING"
-        if self.critical and self.critical_reported_at is None:
-            return "CRITICAL_PENDING"
-        if self.checked_at is None:
-            return "CHECK_PENDING"
-        return "DONE"
-
-    @property
-    def display_name(self) -> str:
-        # 목록에는 이름 대신 차트번호 끝자리만 보인다(조직검체 장부와 같은 가림).
-        return f"테스트 · {self.record.chart_no[-2:]}"
-
-
 class LabDashboardService:
-    persistent = False
-
-    def __init__(self, clock: Clock | None = None, policy: LabLedgerPolicy | None = None):
+    def __init__(self, clock: Clock | None = None, policy: LabLedgerPolicy | None = None,
+                 store: MemoryLabStore | PostgresLabStore | None = None):
         self._clock = clock or SystemClock()
         self._policy = policy or load_policy()
         self._lock = RLock()
-        self._cases: dict[UUID, LabCase] = {}
-        self.reset()
+        self._store = store or MemoryLabStore()
+        self._registration = yaml.safe_load((Path(__file__).resolve().parents[3] / "config" / "lab_workflow.yaml").read_text(encoding="utf-8"))["registration"]
+        if not self.persistent:
+            self.reset()
+
+    @property
+    def persistent(self) -> bool:
+        return self._store.persistent
+
+    def transaction(self):
+        return self._store.transaction()
+
+    def register(self, *, chart_no: str, patient_name: str, received_date: date | None,
+                 exam_kinds: list[str], registered_by: str, sex: str = "", age: str = "",
+                 intake_id: UUID | None = None) -> UUID:
+        chart_no, patient_name, sex, age = (v.strip() for v in (chart_no, patient_name, sex, age))
+        if not chart_no or len(chart_no) > self._registration["chart_max_length"]:
+            raise UserError("차트번호 길이를 확인해 주세요.", 422)
+        if not patient_name or len(patient_name) > self._registration["patient_name_max_length"]:
+            raise UserError("성명을 확인해 주세요.", 422)
+        now = self._clock.now()
+        if received_date is None or received_date > now.astimezone(KST).date():
+            raise UserError("접수일을 오늘 이전 날짜로 선택해 주세요.", 422)
+        if not exam_kinds or not set(exam_kinds) <= set(self._policy.exam_kinds):
+            raise UserError("검사 분류를 선택해 주세요.", 422)
+        if sex and sex not in self._registration["sexes"]:
+            raise UserError("성별을 목록에서 선택해 주세요.", 422)
+        if age and (not age.isascii() or not age.isdigit() or int(age) > self._registration["maximum_age"]):
+            raise UserError("나이를 확인해 주세요.", 422)
+        record = LabRecord("", chart_no, patient_name, received_date=received_date, sex=sex or None,
+                           age=age or None, exam_kinds=tuple(dict.fromkeys(exam_kinds)))
+        case_id = intake_id or uuid4()
+        with self._lock:
+            existing = next((case for case in self._store.cases() if case.id == case_id), None)
+            if existing is not None:
+                old = existing.record
+                if (old.chart_no, old.patient_name, old.received_date, old.exam_kinds, old.sex, old.age) != (
+                        record.chart_no, record.patient_name, record.received_date, record.exam_kinds, record.sex, record.age):
+                    raise UserError("이미 사용한 접수 요청입니다. 기존 기록을 확인해 주세요.", 409)
+                return case_id
+            self._store.write(LabCase(case_id, record, registered_by=self._name(registered_by, "접수 직원")), now)
+        return case_id
+
+    def _save(self, previous: LabCase, changed: LabCase) -> None:
+        self._store.write(changed, self._clock.now(), previous.version)
 
     def _get(self, case_id: UUID) -> LabCase:
-        try:
-            return self._cases[case_id]
-        except KeyError:
-            raise UserError("시연 항목을 찾을 수 없습니다.", 404) from None
+        case = next((case for case in self._store.cases() if case.id == case_id), None)
+        if case is None:
+            raise UserError("접수 항목을 찾을 수 없습니다.", 404)
+        return case
 
     def result_text(self, case: LabCase) -> str:
         return self._policy.result_text(case.record) or ""
@@ -101,19 +110,19 @@ class LabDashboardService:
             start = start or end.replace(day=1)
             if start > end:
                 raise UserError("종료일은 시작일 이후로 선택해 주세요.", 422)
-            cases = [case for case in self._cases.values()
+            cases = [case for case in self._store.cases()
                      if case.record.received_date and start <= case.record.received_date <= end]
             cases.sort(key=lambda case: (case.record.received_date, case.record.chart_no, str(case.id)))
             rows = [{"id": case.id, "values": self._policy.row_values(
                 replace(case.record, patient_name=case.display_name))} for case in cases]
             return {"today": today, "start": start, "end": end, "rows": rows, "cases": cases,
-                    "headers": self._policy.headers, "paper_title": self._policy.title}
+                    "headers": self._policy.headers, "paper_title": self._policy.title, "lab_persistent": self.persistent}
 
     def snapshot(self, stage: str = "ALL", selected_id: UUID | None = None) -> dict:
         with self._lock:
             if stage != "ALL" and stage not in STAGE_LABELS:
                 raise UserError("알 수 없는 업무 분류입니다.", 422)
-            all_cases = list(self._cases.values())
+            all_cases = self._store.cases()
             counts = {key: sum(case.stage == key for case in all_cases) for key in STAGE_LABELS}
             cases = [case for case in all_cases if stage == "ALL" or case.stage == stage]
             selected = self._get(selected_id) if selected_id else (cases[0] if cases else None)
@@ -133,13 +142,15 @@ class LabDashboardService:
                 "qualitative_values": self._policy.qualitative_values,
                 "qualitative_for": self._policy.qualitative_for,
                 "qualitative_items": self._policy.qualitative_for(self._policy.exam_kinds),
+                "lab_persistent": self.persistent, "exam_kinds": self._policy.exam_kinds,
+                "intake_id": uuid4(), "registration": self._registration,
             }
 
-    @staticmethod
-    def _name(value: str, label: str) -> str:
+    def _name(self, value: str, label: str) -> str:
         clean = value.strip()
-        if not clean or len(clean) > NAME_MAX:
-            raise UserError(f"{label}을(를) 1~{NAME_MAX}자로 입력해 주세요.", 422)
+        maximum = self._registration["staff_identity_max_length"] if self.persistent else NAME_MAX
+        if not clean or len(clean) > maximum:
+            raise UserError(f"{label}을(를) 1~{maximum}자로 입력해 주세요.", 422)
         return clean
 
     def enter_result(self, case_id: UUID, *, report_ref: str, report_date: date | None,
@@ -187,7 +198,7 @@ class LabDashboardService:
             now = self._clock.now()
             record = replace(case.record, report_ref=ref, report_date=report_date, items=tuple(items),
                              result_received=True)
-            self._cases[case_id] = replace(case, record=record, result_entered_at=now, result_entered_by=name)
+            self._save(case, replace(case, record=record, result_entered_at=now, result_entered_by=name))
 
     def mark_critical(self, case_id: UUID, item_names: list[str], marked_by: str) -> None:
         """관리자가 확인한 위급치를 표기한다(B15). 시스템은 수치로 위급치를 고르지 않는다."""
@@ -201,8 +212,8 @@ class LabDashboardService:
             if not chosen or not chosen <= flagged:
                 raise UserError("H/L로 입력된 항목 중에서 위급치를 골라 주세요.", 422)
             items = tuple(replace(item, critical=item.name in chosen) for item in case.record.items)
-            self._cases[case_id] = replace(case, record=replace(case.record, items=items),
-                                           critical_marked_at=self._clock.now(), critical_marked_by=name)
+            self._save(case, replace(case, record=replace(case.record, items=items),
+                                    critical_marked_at=self._clock.now(), critical_marked_by=name))
 
     def report_critical(self, case_id: UUID, reported_by: str) -> None:
         """직원이 위급치를 원장에게 보고했음을 기록한다. 원장 지시 내용은 받지 않는다."""
@@ -211,8 +222,7 @@ class LabDashboardService:
             if case.stage != "CRITICAL_PENDING":
                 raise UserError("원장 보고 대기 항목에서 기록해 주세요.")
             name = self._name(reported_by, "보고한 직원")
-            self._cases[case_id] = replace(
-                case, critical_reported_at=self._clock.now(), critical_reported_by=name)
+            self._save(case, replace(case, critical_reported_at=self._clock.now(), critical_reported_by=name))
 
     def check(self, case_id: UUID, checked_by: str, followup_note: str = "") -> None:
         with self._lock:
@@ -224,19 +234,21 @@ class LabDashboardService:
             if len(note) > NOTE_MAX:
                 raise UserError(f"비고란은 {NOTE_MAX}자 이내 메모로 적어 주세요.", 422)
             record = replace(case.record, followup_note=note or None)
-            self._cases[case_id] = replace(case, record=record, checked_at=self._clock.now(), checked_by=name)
+            self._save(case, replace(case, record=record, checked_at=self._clock.now(), checked_by=name))
 
     def critical_pending_count(self) -> int:
         """모든 화면 상단 알림용. 건수만 돌려주고 환자 정보는 담지 않는다."""
         with self._lock:
-            return sum(case.stage == "CRITICAL_PENDING" for case in self._cases.values())
+            return sum(case.stage == "CRITICAL_PENDING" for case in self._store.cases())
 
     def subject_of(self, case_id: UUID) -> str:
         with self._lock:
             return self._get(case_id).record.chart_no
 
     def reset(self) -> None:
-        """고정된 합성 10건만 다시 만든다. 새 수진자를 받지 않는다."""
+        """메모리 시연만 초기화한다. DB 저장 자료는 초기화하지 않는다."""
+        if self.persistent:
+            raise UserError("DB 저장 모드에서는 시연 초기화를 사용할 수 없습니다.", 403)
         with self._lock:
             now = self._clock.now()
             cases = {}
@@ -246,4 +258,4 @@ class LabDashboardService:
                     # 시연 자료의 위급치는 관리자가 이미 표기한 상태로 둔다.
                     case = replace(case, critical_marked_at=now, critical_marked_by="테스트관리자")
                 cases[case.id] = case
-            self._cases = cases
+            self._store.reset(cases)

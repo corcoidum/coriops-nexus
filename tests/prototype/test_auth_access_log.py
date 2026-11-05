@@ -19,6 +19,8 @@ from app.main import create_app
 from app.manage import main as manage_main
 from app.modules.endoscopy_pathology.ledger_db import PostgresStore, database_url
 from app.modules.endoscopy_pathology.manual_dashboard import ManualDashboardService
+from app.modules.screening_lab.dashboard import LabDashboardService
+from app.modules.screening_lab.store import PostgresLabStore
 from ledger_helpers import FixedClock, biopsy_row, workbook_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -507,21 +509,159 @@ def test_memory_demo_keeps_working_without_login(monkeypatch):
         assert client.get("/login", follow_redirects=False).headers["location"] == "/"
 
 
-def test_lab_demo_tab_is_not_mounted_in_db_mode(parts):
-    # 혈액검체 탭은 저장소가 없는 합성 시연이므로 DB 모드에서는 화면·메뉴가 없어야 한다.
+def test_lab_db_mode_starts_empty_without_synthetic_seed(parts):
     app, auth, _, _ = parts
-    assert app.state.lab_service is None
+    assert app.state.lab_service.persistent
+    assert app.state.lab_service.snapshot()["total"] == 0
     make_staff(auth, "admin1", ["ADMIN"])
     with client_for(app) as client:
         login(client, "admin1")
-        assert 'href="/lab"' not in client.get("/dashboard").text
-        assert client.get("/lab").status_code == 404
-        assert client.get("/lab/paper").status_code == 404
-        assert client.get("/critical").status_code == 404
-        # 첫 화면에는 조직검체 카드만 있고 위급치 알림도 없다.
+        assert 'href="/lab"' in client.get("/dashboard").text
+        assert client.get("/lab").status_code == 200
+        assert client.get("/lab/paper").status_code == 200
+        assert client.get("/critical").status_code == 200
         home = client.get("/").text
         assert "오늘 할 일" in home and "조직검체 장부 열기" in home
-        assert "혈액검체 장부 열기" not in home and "critical-alert" not in home
+        assert "혈액검체 장부 열기" in home and "critical-alert" not in home
+
+
+def lab_intake(client, token, **changes):
+    data = {"csrf_token": token, "chart_no": "T-L0101", "patient_name": "테스트혈액",
+            "received_date": "2026-11-05", "exam_kinds": ["일반검진6종"], "sex": "F", "age": "45"}
+    data.update(changes)
+    return client.post("/lab/cases", data=data, follow_redirects=False)
+
+
+def lab_result(client, token, case_id, **changes):
+    data = {"csrf_token": token, "report_ref": "TEST-LAB-0101", "report_date": "2026-11-05",
+            "item_name": ["AST"], "item_value": ["52"], "item_flag": ["H"], "entered_by": "FORGED"}
+    data.update(changes)
+    return client.post(f"/lab/cases/{case_id}/result", data=data, follow_redirects=False)
+
+
+def test_lab_persistent_workflow_survives_new_service_and_ignores_forged_staff(parts, clock):
+    app, auth, _, service = parts
+    make_staff(auth, "labdoctor", ["DOCTOR"])
+    with client_for(app) as client:
+        login(client, "labdoctor")
+        token = csrf(client)
+        response = lab_intake(client, token)
+        assert response.status_code == 303
+        case = app.state.lab_service.snapshot()["cases"][0]
+        assert case.registered_by == "labdoctor" and case.stage == "RESULT_PENDING"
+        assert lab_result(client, token, case.id).status_code == 303
+        assert client.post(f"/lab/cases/{case.id}/mark-critical", data={"csrf_token": token,
+                           "critical_items": ["AST"], "marked_by": "FORGED"}).status_code == 200
+        assert "원장 보고 대기 1건" in client.get("/critical").text
+        assert client.post(f"/lab/cases/{case.id}/check", data={"csrf_token": token}).status_code == 400
+        assert client.post(f"/lab/cases/{case.id}/report-critical", data={"csrf_token": token,
+                           "reported_by": "FORGED", "back": "critical"}, follow_redirects=False).status_code == 303
+        assert client.post(f"/lab/cases/{case.id}/check", data={"csrf_token": token,
+                           "checked_by": "FORGED", "followup_note": "테스트 대조 완료"}).status_code == 200
+        restarted = LabDashboardService(clock=clock, store=PostgresLabStore(service.engine))
+        [saved] = restarted.snapshot()["cases"]
+        assert saved.id == case.id and saved.stage == "DONE"
+        assert {saved.registered_by, saved.result_entered_by, saved.critical_marked_by,
+                saved.critical_reported_by, saved.checked_by} == {"labdoctor"}
+        assert saved.record.items[0].value == "52" and saved.version == 5
+        page = client.get("/lab/paper").text
+        assert "AST 52 H" in page and "테스트 대조 완료" in page
+        assert client.post("/lab/reset", data={"csrf_token": token}).status_code == 403
+        assert restarted.snapshot()["total"] == 1
+
+
+def test_lab_reuses_patient_and_rejects_name_or_receipt_conflicts(parts):
+    app, auth, _, service = parts
+    service.register("BIOPSY", "T-L0101", "테스트혈액", date(2026, 11, 5),
+                     procedure_type="stomach", specimen_count="1")
+    make_staff(auth, "labadmin", ["ADMIN"])
+    with client_for(app) as client:
+        login(client, "labadmin")
+        token = csrf(client)
+        assert lab_intake(client, token, patient_name="테스트다른이름").status_code == 409
+        assert app.state.lab_service.snapshot()["total"] == 0
+        assert lab_intake(client, token).status_code == 303
+        assert lab_intake(client, token, chart_no="T-L0102").status_code == 303
+        first, second = app.state.lab_service.snapshot()["cases"]
+        assert lab_result(client, token, first.id).status_code == 303
+        assert lab_result(client, token, second.id).status_code == 409
+        assert app.state.lab_service.snapshot(selected_id=second.id)["selected"].stage == "RESULT_PENDING"
+        with service.engine.connect() as connected:
+            assert connected.execute(text("SELECT count(*) FROM patients WHERE chart_no = 'T-L0101'")).scalar() == 1
+
+
+@pytest.mark.parametrize("operation,target", [("register", "lab_entry"), ("result", "lab_result"),
+    ("mark", "lab_critical_mark"), ("report", "lab_critical_report"), ("check", "lab_check")])
+def test_lab_audit_failure_rolls_back_changes(parts, monkeypatch, operation, target):
+    app, auth, logger, _ = parts
+    make_staff(auth, "atomiclab", ["DOCTOR"])
+    lab = app.state.lab_service
+    with client_for(app) as client:
+        login(client, "atomiclab")
+        token = csrf(client)
+        if operation != "register":
+            lab_intake(client, token)
+            case = lab.snapshot()["cases"][0]
+            if operation in {"mark", "report", "check"}:
+                lab_result(client, token, case.id)
+            if operation == "report":
+                lab.mark_critical(case.id, ["AST"], "atomiclab")
+        before = lab.snapshot()
+        original = logger.record
+        def fail(**kwargs):
+            original(**kwargs)
+            if kwargs["target_type"] == target:
+                raise RuntimeError("SYNTHETIC_AUDIT_FAILURE")
+        monkeypatch.setattr(logger, "record", fail)
+        with pytest.raises(RuntimeError):
+            if operation == "register":
+                lab_intake(client, token)
+            elif operation == "result":
+                lab_result(client, token, case.id)
+            else:
+                suffix = {"mark": "mark-critical", "report": "report-critical", "check": "check"}[operation]
+                client.post(f"/lab/cases/{case.id}/{suffix}", data={"csrf_token": token, "critical_items": ["AST"]})
+        assert lab.snapshot()["cases"] == before["cases"]
+
+
+def test_lab_nurse_can_register_but_not_result_and_repeat_intake_is_idempotent(parts):
+    from uuid import uuid4
+    app, auth, _, _ = parts
+    make_staff(auth, "labnurse", ["NURSE"])
+    with client_for(app) as client:
+        login(client, "labnurse")
+        token = csrf(client)
+        intake_id = str(uuid4())
+        assert lab_intake(client, token, intake_id=intake_id).status_code == 303
+        assert lab_intake(client, token, intake_id=intake_id).status_code == 303
+        assert app.state.lab_service.snapshot()["total"] == 1
+        case = app.state.lab_service.snapshot()["cases"][0]
+        assert lab_result(client, token, case.id).status_code == 403
+        assert "조회 가능한 기록" in client.get(f"/lab?selected_id={case.id}").text
+        assert client.post("/lab/cases", data={"chart_no": "T-L0103"}).status_code == 403
+
+
+def test_lab_optimistic_updates_do_not_overwrite_concurrent_change(parts, clock):
+    from dataclasses import replace
+    app, _, _, service = parts
+    lab = app.state.lab_service
+    case_id = lab.register(chart_no="T-L0101", patient_name="테스트혈액", received_date=date(2026, 11, 5),
+                           exam_kinds=["일반검진6종"], registered_by="테스트계정")
+    before = lab.snapshot(selected_id=case_id)["selected"]
+    store = PostgresLabStore(service.engine)
+    store.write(replace(before, checked_by="FIRST"), clock.now(), before.version)
+    from app.kernel.web import UserError
+    with pytest.raises(UserError) as error:
+        store.write(replace(before, checked_by="SECOND"), clock.now(), before.version)
+    assert error.value.status_code == 409
+    assert lab.snapshot(selected_id=case_id)["selected"].checked_by == "FIRST"
+
+
+def test_lab_migration_can_downgrade_and_upgrade_again(clean):
+    command.downgrade(alembic_config(), "0004_rules_tasks")
+    assert "lab_cases" not in inspect(clean).get_table_names()
+    command.upgrade(alembic_config(), "head")
+    assert "lab_cases" in inspect(clean).get_table_names()
 
 
 # ---------- 접속 대역 제한 (고시 제6조①)
