@@ -30,7 +30,13 @@ PR #11을 CI 성공 확인 후 병합했다(기준 main `1064fa3`). 합성 메�
 
 `/recalls`는 등록된 제공자를 통해 원본 재검 예정일·시행 완료·기록자·상세 링크를 조회한다. 현재 ENDOSCOPY만 조립하며 도래·경과/이후 예정/완료/미완료 전체와 예정일 기간을 선택한다. 원본 일정을 복제하거나 다음 주기를 계산하지 않는다. 새 종류는 업무 기준을 정한 뒤 등록한다. PostgreSQL 전체 시험 576건 통과, 실제 Chrome에서 원본 재검 시행 완료 후 Recall 완료 목록 반영을 확인했다.
 
-## 앱 실행
+## 암호화 백업·복원 리허설
+
+`python scripts/verify_backup.py`는 무작위 이름의 별도 Compose 프로젝트에 합성 DB 2개를 만들고 계정·혈액 결과·접속기록을 생성한다. 공개 recipient로 pg_dump를 age 암호화하고, 암호문 인증 후 비어 있는 합성 DB에 단일 트랜잭션으로 복원한다. 원본 업무 값과 접속기록 해시 체인을 재검증한다. 잘못된 키·변조·비어 있지 않은 대상과 명시적 허용/합성 DB 이름 경계도 확인한다. 종료 시 전용 프로젝트·임시 키·암호문만 정리하며 기존 DB에는 접속하지 않는다. GitHub CI에도 같은 리허설을 추가했다.
+
+운영 PC의 HTTPS·접속 대역·권한 승인·보관 정책·백업 경로와 키 담당·복구 시간 측정은 별도 OPS/정책 확인이다. 자동 백업 일정·보관기간 삭제·실데이터 운영 전환은 이번 검증으로 켜지 않는다. 상세: [백업 리허설](backup-rehearsal.md).
+
+## 로컬 앱 실행
 
 ```powershell
 docker compose -f docker-compose.prototype.yml --profile dashboard up -d --build dashboard
