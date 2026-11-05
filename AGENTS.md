@@ -41,7 +41,7 @@ python -m pyflakes app tests migrations scripts
 python scripts/gen_docs.py --check   # YAML을 고쳤으면 먼저 python scripts/gen_docs.py
 # PostgreSQL 16이 필요하다. 로컬 설치 또는 Docker:
 #   CORIOPS_TEST_DB_PASSWORD=<무작위 값> docker compose -f docker-compose.prototype.yml --profile test run --build --rm test
-PGHOST=127.0.0.1 PGPORT=5432 PGUSER=coriops_test PGDATABASE=coriops_test python -m pytest -q
+CORIOPS_TEST_DATABASE_URL=postgresql+psycopg://coriops_test@127.0.0.1:5432/coriops_test CORIOPS_TEST_ALLOW_RESET=1 python -m pytest -q
 ```
 
 GitHub Actions(`.github/workflows/ci.yml`)가 PR마다 같은 검사를 실행한다. 빨간 CI는 병합하지 않는다. 시험을 건너뛰거나 지워서 통과시키지 않는다.

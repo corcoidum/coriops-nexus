@@ -160,8 +160,9 @@ def post(client, path, **data):
 
 def test_intake_form_matches_paper_ledger_and_links_work(client):
     page = client.get("/dashboard?new=1").text
-    for label in ("시행날짜", "차트번호", "성명", "성별/나이", "검사명", "조직검사 유무, 위치 및 개수", "부위", "개수(병)", "RUT"):
+    for label in ("시행날짜", "차트번호", "성명", "성별/나이", "검사명", "조직검사 유무, 위치 및 개수", "부위", "개수(병)"):
         assert label in page
+    assert 'name="rut"' not in page and 'href="/clo?new=1"' in page
     # 분변잠혈 접수는 분변잠혈 대장에서만 한다(A22).
     assert 'value="STOOL"' not in page
     stool = client.get("/fobt?new=1")
@@ -178,7 +179,12 @@ def test_intake_form_matches_paper_ledger_and_links_work(client):
     assert stool_post.status_code == 303
     service = client.app_state.dashboard_service
     kinds = sorted((e.kind, e.sex, e.age) for e in service._store.entries())
-    assert kinds == [("BIOPSY", "F", 56), ("CLO", "F", 56), ("STOOL", "M", 70)]
+    # 예전 폼의 rut 값이 함께 와도 CLO를 중복 접수하지 않는다. CLO는 전용 화면에서 접수한다.
+    assert kinds == [("BIOPSY", "F", 56), ("STOOL", "M", 70)]
+    clo_post = post(client, "/ledger/register", kind="CLO", exam_date="2026-11-04", chart_no="T-0201",
+                    patient_name="테스트화면", sex_age="F/56")
+    assert clo_post.status_code == 303 and clo_post.headers["location"].startswith("/clo?")
+    assert sum(e.kind == "CLO" for e in service._store.entries()) == 1
 
     bad = post(client, "/ledger/register", kind="ENDOSCOPY", exam_date="2026-11-04", chart_no="T-0203",
                patient_name="테스트없음", procedure_type="colon")

@@ -94,6 +94,21 @@ class LabDashboardService:
     def result_text(self, case: LabCase) -> str:
         return self._policy.result_text(case.record) or ""
 
+    def paper_snapshot(self, start: date | None = None, end: date | None = None) -> dict:
+        with self._lock:
+            today = self._clock.now().astimezone(KST).date()
+            end = end or today
+            start = start or end.replace(day=1)
+            if start > end:
+                raise UserError("종료일은 시작일 이후로 선택해 주세요.", 422)
+            cases = [case for case in self._cases.values()
+                     if case.record.received_date and start <= case.record.received_date <= end]
+            cases.sort(key=lambda case: (case.record.received_date, case.record.chart_no, str(case.id)))
+            rows = [{"id": case.id, "values": self._policy.row_values(
+                replace(case.record, patient_name=case.display_name))} for case in cases]
+            return {"today": today, "start": start, "end": end, "rows": rows, "cases": cases,
+                    "headers": self._policy.headers, "paper_title": self._policy.title}
+
     def snapshot(self, stage: str = "ALL", selected_id: UUID | None = None) -> dict:
         with self._lock:
             if stage != "ALL" and stage not in STAGE_LABELS:
@@ -117,7 +132,7 @@ class LabDashboardService:
                 "result_flags": self._policy.result_flags,
                 "qualitative_values": self._policy.qualitative_values,
                 "qualitative_for": self._policy.qualitative_for,
-                "entry_rows": 5,
+                "qualitative_items": self._policy.qualitative_for(self._policy.exam_kinds),
             }
 
     @staticmethod
@@ -161,8 +176,11 @@ class LabDashboardService:
                 raise UserError("H/L 항목을 입력했다면 'H/L 표시 없음'을 해제해 주세요.", 422)
             if not items and not no_flagged:
                 raise UserError("H/L 항목을 입력하거나 'H/L 표시 없음'을 체크해 주세요.", 422)
-            for qualitative_name in self._policy.qualitative_for(case.record.exam_kinds):
+            required_qualitative = self._policy.qualitative_for(case.record.exam_kinds)
+            for qualitative_name in self._policy.qualitative_for(self._policy.exam_kinds):
                 value = qualitative.get(qualitative_name, "")
+                if not value and qualitative_name not in required_qualitative:
+                    continue
                 if value not in self._policy.qualitative_values:
                     raise UserError(f"{qualitative_name}의 Neg/Pos를 골라 주세요.", 422)
                 items.append(LabItem(qualitative_name, value))

@@ -4,6 +4,8 @@
 
 > 방향과 단계: [ROADMAP.md](ROADMAP.md) · AI 도우미·기여자 작업 규칙: [AGENTS.md](AGENTS.md)
 
+최근 구현·집 PC 실행: [2026-10-27 작업 인계](docs/checkpoint-2026-10-27.md).
+
 내시경 검체 채취 → 수탁 의뢰 → 결과 수신 → 원장 확인 → 환자 안내 → F/U 등록을 관리할 원내 LAN 전용 보조 업무대장이다. 진단·치료·F/U 주기는 원장이 결정한다. 조직검사 결과는 등록된 결과 코드(예: `TA#2(L)`)와 Sydney 등급만 구조화해 저장하고 판독문 원문은 저장하지 않는다(A11, 정식 앱 설계). 연락처, 주소, 주민등록번호, 보험정보는 저장하지 않는다.
 
 **지금은 수동 입력으로 첫 화면을 확인한다.** 씨젠은 직접 확인하고 기존 Excel 장부는 평소대로 관리한다. 자동 로그인·약어 자동 변환은 뒤로 미룬다. 약어 사전 없이 합성 자료 12건으로 **오늘 씨젠 인계(3자·병 수 대조) → 결과 코드 입력 → 원장 지시 기록 → 재검 대상 관리** 흐름을 눌러볼 수 있다. 결과 설명은 EMR에서 관리한다(A12).
@@ -59,6 +61,20 @@ docker version
 ```
 
 현재 실행은 `docker-compose.prototype.yml`을 사용한다. [첫 대시보드](docs/manual-dashboard.md) 또는 [Excel 프로토타입](docs/excel-prototype.md)을 시험·시연할 수 있으며, 정식 앱의 Alembic 마이그레이션은 아직 준비되지 않았다. 전체 검증 계획은 [검증 계획](docs/verification-plan.md)을 참고한다.
+
+## 테스트 DB 보호
+
+전체 pytest는 테이블을 초기화한다. 운영 DB 설정이 있는 터미널에서 실행하지 않는다. Compose의 `test` 서비스는 전용 URL과 초기화 허용을 내부에서 설정하며 운영 볼륨을 쓰지 않는다.
+
+로컬 PostgreSQL 16을 직접 쓰는 경우, 시험 전용 `coriops_test` 사용자·DB를 준비한 뒤 PowerShell에서 실행한다. 비밀번호는 시험 DB의 `PGPASSWORD` 환경변수로 전달한다.
+
+```powershell
+$env:CORIOPS_TEST_DATABASE_URL = 'postgresql+psycopg://coriops_test@127.0.0.1:5432/coriops_test'
+$env:CORIOPS_TEST_ALLOW_RESET = '1'
+python -m pytest -q
+```
+
+`CORIOPS_DATABASE_URL`이 위 시험 URL과 다르거나, 초기화 허용이 없거나, 사용자·DB 이름이 `coriops_test`가 아니면 수집 전에 중단한다. URL 쿼리와 외부 DB 주소도 허용하지 않는다. 앱 실행용 환경과 시험용 환경을 별도 터미널에서 관리한다.
 
 ## 배포 전에 확인할 운영 절차 — 아직 실행하지 않음
 

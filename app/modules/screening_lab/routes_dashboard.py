@@ -37,12 +37,38 @@ def case_redirect(case_id: UUID) -> RedirectResponse:
 
 @router.get("/lab")
 def lab_dashboard(request: Request, service: Service, stage: str = "ALL", selected_id: UUID | None = None):
+    if stage == "CRITICAL_PENDING":
+        suffix = f"?selected_id={selected_id}" if selected_id else ""
+        return RedirectResponse(f"/critical{suffix}", status_code=303)
+    return dashboard_page(request, service, stage, selected_id)
+
+
+@router.get("/critical")
+def critical_dashboard(request: Request, service: Service, selected_id: UUID | None = None,
+                       notice: str = ""):
+    return dashboard_page(request, service, "CRITICAL_PENDING", selected_id, critical_view=True,
+                          notice="원장 보고 완료를 기록했습니다." if notice == "reported" else "")
+
+
+def dashboard_page(request: Request, service: LabDashboardService, stage: str,
+                   selected_id: UUID | None, *, critical_view: bool = False, notice: str = ""):
     require(request, "ledger.view")
     context = service.snapshot(stage=stage, selected_id=selected_id)
+    if critical_view and context["selected"] and context["selected"].stage != "CRITICAL_PENDING":
+        raise UserError("원장 보고 대기 항목이 아닙니다. 위급치 보고 목록에서 다시 선택해 주세요.", 422)
+    context.update(critical_view=critical_view, notice=notice)
     audit(request, "LIST", "lab_list", subjects=[case.record.chart_no for case in context["cases"]])
     if context["selected"] is not None:
         audit(request, "VIEW", "lab_entry", subjects=[context["selected"].record.chart_no])
     return render(request, "lab_dashboard.html", context)
+
+
+@router.get("/lab/paper")
+def lab_paper(request: Request, service: Service, start: str = "", end: str = ""):
+    require(request, "ledger.view")
+    context = service.paper_snapshot(form_date(start), form_date(end))
+    audit(request, "LIST", "lab_paper", subjects=[case.record.chart_no for case in context["cases"]])
+    return render(request, "lab_paper.html", context)
 
 
 def form_date(value: str) -> date | None:
@@ -79,10 +105,12 @@ def mark_critical(request: Request, case_id: UUID, service: Service,
 
 @router.post("/lab/cases/{case_id}/report-critical", dependencies=[Csrf])
 def report_critical(request: Request, case_id: UUID, service: Service,
-                    reported_by: Annotated[str, Form()] = ""):
+                    reported_by: Annotated[str, Form()] = "", back: Annotated[str, Form()] = ""):
     require(request, "ledger.result")
     service.report_critical(case_id, reported_by)
     audit(request, "UPDATE", "lab_critical_report", subjects=[service.subject_of(case_id)])
+    if back == "critical":
+        return RedirectResponse("/critical?notice=reported", status_code=303)
     return case_redirect(case_id)
 
 

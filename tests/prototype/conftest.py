@@ -5,6 +5,21 @@ import socket
 
 import pytest
 
+from db_safety import test_database_environment
+
+
+def pytest_configure(config):
+    # 수집 중 app.main을 import하기 전 검사한다. fixture 시점에는 이미 늦다.
+    try:
+        settings = test_database_environment(os.environ)
+    except ValueError as error:
+        raise pytest.UsageError(str(error)) from None
+    for name, value in settings.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
+
 
 @pytest.fixture(autouse=True)
 def restrict_network(monkeypatch):

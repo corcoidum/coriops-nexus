@@ -41,6 +41,7 @@ ISSUE_LABELS = {
     "INVALID_VALUE": "형식 오류(빈 값으로 가져옴)",
     "INVALID_REQUIRED": "필수 값 형식 오류(가져오지 않음)",
     "NAME_MISMATCH": "같은 차트번호에 다른 이름(가져오지 않음)",
+    "IDENTITY_MISMATCH": "접수번호는 같지만 환자·검사 정보가 다름(가져오지 않음)",
     "MISSING_HEADER": "필수 열 없음(시트 전체 건너뜀)",
     "TOO_MANY_ROWS": "행 수 초과(시트 전체 건너뜀)",
     "DUPLICATE_IN_FILE": "파일 안 중복 행(첫 행만 사용)",

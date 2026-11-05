@@ -1,6 +1,6 @@
 {% extends "ledger_base.html" %}
 {% block crumb %}{{ ledger_label }}{% endblock %}
-{% block footer %}<span>CoriOps Nexus <span class="footer-dot">·</span> {{ ledger_label }}</span><span>{% if ledger == 'clo' %}검사 → 결과 기록 → 종결{% elif not has_followup %}접수 → 인계 → 결과 → 원장 확인{% else %}접수 → 인계 → 결과 → 원장 지시 → 재검{% endif %}</span>{% endblock %}
+{% block footer %}<span>CoriOps Nexus <span class="footer-dot">·</span> {{ ledger_label }}</span><span>{% if ledger == 'clo' %}검사 → 결과 기록 → 종결{% elif ledger == 'fobt' %}당일 제출 대상 접수 → 다음날 결과 입력 → 원장 확인{% else %}접수 → 인계 → 결과 → 원장 지시 → 재검{% endif %}</span>{% endblock %}
 {# 매크로 기본값에서는 화면 변수를 읽지 못하므로 none이면 본문에서 현재 값으로 채운다. #}
 {% macro link(stage=none, kind=none, q=none, page=1, selected_id=none, new=False, due=none, positive=none) -%}
 {%- set s = stage if stage is not none else current.stage -%}
@@ -12,7 +12,7 @@
 {%- endmacro %}
 {% block content %}
     {% if ledger == 'fobt' %}
-    <div class="page-heading"><div><span class="eyebrow">FOBT LEDGER</span><h1>분변잠혈 대장</h1><p>[검진] Stool occult blood 정량. 접수 → 인계 → 결과 → 원장 확인 순서이며 재검 예정일은 두지 않습니다. 종이 대장 ③ 양식으로 출력합니다.</p></div>
+    <div class="page-heading"><div><span class="eyebrow">FOBT LEDGER</span><h1>분변잠혈 대장</h1><p>당일 제출 대상자를 접수하고, 다음날 결과 대기 목록에서 결과를 입력합니다. 이후 원장 확인을 기록하며 종이 대장 ③ 양식으로 출력합니다.</p></div>
     {% elif ledger == 'clo' %}
     <div class="page-heading"><div><span class="eyebrow">CLO LEDGER</span><h1>CLO 대장</h1><p>RUT(CLO) 원내 판정. 검사 → 결과 기록 → 종결 순서이며 원장 지시 단계는 없습니다. 제균치료·재검 판단은 EMR에서 합니다.</p></div>
     {% else %}
@@ -24,7 +24,7 @@
       <div class="handoff-summary">
         <span class="eyebrow">TODAY'S HANDOFF</span>
         <h2 id="handoff-title">오늘 수탁기관 인계</h2>
-        <p class="field-help">조직검체·분변잠혈을 같은 수령 때 함께 인계합니다. 병 수는 두 장부를 합친 값입니다.</p>
+        <p class="field-help">이 장부의 조직검체만 인계합니다. 분변잠혈은 별도 대장에서 관리합니다.</p>
         <div class="handoff-count"><strong>{{ pickup.pending_cases }}</strong>건 · <strong>{{ pickup.pending_specimens }}</strong>병 인계 대기</div>
         <span class="alert-chip {{ pickup.level }}">{{ pickup.text }}</span>
         {% for record in pickup.handed_today %}<p class="handoff-done">✓ {{ record.handed_time }} {{ record.case_count }}건 {{ record.specimen_count }}병 · 접수 {{ record.registered_by }} → 인계 {{ record.handed_by }} → 인수 {{ record.receiver_name }}</p>{% endfor %}
@@ -151,7 +151,7 @@
 
       <section class="panel detail" aria-labelledby="detail-title">
       {% if new %}
-        <div class="detail-header"><span class="eyebrow">NEW EXAM</span><h2 id="detail-title">새 검사 접수</h2><div class="detail-person">{% if new_kind == 'STOOL' %}분변잠혈 검체 1건을 대장에 올립니다{% elif new_kind == 'CLO' %}RUT(CLO) 1건을 대장에 올립니다{% else %}종이 검체 관리 장부 한 줄과 같습니다{% endif %}<span>같은 차트번호는 이름이 같아야 합니다.</span></div></div>
+        <div class="detail-header"><span class="eyebrow">NEW EXAM</span><h2 id="detail-title">새 검사 접수</h2><div class="detail-person">{% if new_kind == 'STOOL' %}당일 분변잠혈 제출 대상자를 접수합니다{% elif new_kind == 'CLO' %}RUT(CLO) 1건을 대장에 올립니다{% else %}종이 검체 관리 장부 한 줄과 같습니다{% endif %}<span>같은 차트번호는 이름이 같아야 합니다.</span></div></div>
         <div class="detail-body">
           <form action="/ledger/register" method="post" class="register-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -161,10 +161,9 @@
             <div class="field-row"><div><label for="patient_name">성명 <span class="required">필수</span></label><input id="patient_name" name="patient_name" maxlength="30" required autocomplete="off"></div>
               <div><label for="sex_age">성별/나이</label><input id="sex_age" name="sex_age" maxlength="8" placeholder="M/65" autocomplete="off"></div></div>
             {% if new_kind == 'STOOL' %}
-            <label for="specimen_count">개수(병) <span class="optional">선택</span></label><input id="specimen_count" name="specimen_count" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="병" autocomplete="off">
-            <p class="field-help">분변잠혈은 오늘 인계 목록(조직검체와 함께 수령)에 올라갑니다.</p>
+            <p class="field-help">접수하면 바로 결과 대기 목록에 올라갑니다. 다음날 이 목록에서 결과를 입력하세요.</p>
             {% elif new_kind == 'CLO' %}
-            <p class="field-help">RUT는 stomach 검사의 원내 판정이라 인계 없이 바로 결과 대기에 올라갑니다. 조직검사와 함께 했으면 조직검체 장부의 접수 한 줄로 함께 올려도 됩니다.</p>
+            <p class="field-help">RUT는 CLO 대장에서 별도로 접수합니다. 원내 판정이라 인계 없이 바로 결과 대기에 올라갑니다.</p>
             {% else %}
             <fieldset class="segmented"><legend>검사명 <span class="required">필수</span></legend>
               {% for key in procedure_labels %}<label><input type="radio" name="procedure_type" value="{{ key }}" {% if loop.first %}checked{% endif %} required> {{ key }}</label>{% endfor %}
@@ -174,16 +173,13 @@
               <div class="field-row"><div><label for="site">부위</label><input id="site" name="site" maxlength="80" placeholder="예: antrum" autocomplete="off"></div>
                 <div><label for="specimen_count">개수(병)</label><input id="specimen_count" name="specimen_count" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="병" autocomplete="off"></div></div>
             </fieldset>
-            <fieldset class="check-group"><legend>RUT</legend>
-              <label class="check"><input type="checkbox" name="rut"> RUT 시행 (stomach만)</label>
-            </fieldset>
-            <p class="field-help">조직검사는 오늘 인계 목록에, RUT는 원내 판정이라 CLO 대장의 결과 대기에 바로 올라갑니다. 둘 다 없는 내시경은 장부에 올리지 않습니다.</p>
+            <p class="field-help">조직검사는 오늘 인계 목록에 올라갑니다. RUT는 <a href="/clo?new=1">CLO 대장에서 별도로 접수</a>합니다.</p>
             {% endif %}
             <button class="button primary full" type="submit">접수 기록 <span aria-hidden="true">→</span></button>
           </form>
         </div>
       {% elif selected %}{% set alert = alerts[selected.id] %}{% set sel_stage = stages[selected.id] %}
-        <div class="detail-header"><span class="eyebrow">NEXT ACTION</span><h2 id="detail-title">{{ stage_actions[sel_stage] }}</h2><div class="detail-person">{{ selected.patient_name }}<span>{{ kind_labels[selected.kind] }}{% if selected.procedure_label %} · {{ selected.procedure_label }}{% endif %} · {{ selected.chart_no }}{% if selected.specimen_count %} · {{ selected.specimen_count }}병{% endif %}</span></div></div>
+        <div class="detail-header"><span class="eyebrow">NEXT ACTION</span><h2 id="detail-title">{{ stage_actions[sel_stage] }}</h2><div class="detail-person">{{ selected.patient_name }}<span>{{ kind_labels[selected.kind] }}{% if selected.procedure_label %} · {{ selected.procedure_label }}{% endif %} · {{ selected.chart_no }}{% if selected.kind != 'STOOL' and selected.specimen_count %} · {{ selected.specimen_count }}병{% endif %}</span></div></div>
         <div class="detail-body">
           <div class="step-track" aria-label="현재 단계">{% set order = (['HANDOFF_PENDING'] if selected.kind in handoff_kinds or sel_stage == 'HANDOFF_PENDING' else []) + ['RESULT_PENDING'] + (['DOCTOR_PENDING'] if selected.kind in review_kinds or selected.decided_at else []) + (['FOLLOWUP'] if has_followup or sel_stage == 'FOLLOWUP' else []) + ['CLOSED'] %}{% for key in order %}{% if not loop.first %}<i></i>{% endif %}<span class="{% if order.index(key) <= order.index(sel_stage) %}step-done{% endif %}">{{ loop.index }}</span>{% endfor %}</div>
           <p class="alert-chip {{ alert.level }}">{{ alert.text }}</p>
@@ -194,11 +190,11 @@
           <p class="form-intro">{% if codes %}전체 결과가 공개되면 장부 표기 그대로 코드로 입력합니다. 판독문 문장은 입력하지 않습니다.{% else %}판정을 짧게 입력합니다(예: +, -, 양성, 음성).{% endif %}</p>
           <form action="/ledger/cases/{{ selected.id }}/receive" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label for="report_ref">접수번호 {% if codes %}<span class="required">필수</span>{% else %}<span class="optional">선택</span>{% endif %}</label><input id="report_ref" name="report_ref" maxlength="20" {% if codes %}required{% endif %} placeholder="예: T9700001" autocomplete="off">
+            <label for="report_ref">접수번호 {% if codes %}<span class="required">필수</span>{% else %}<span class="optional">선택</span>{% endif %}</label><input id="report_ref" name="report_ref" maxlength="20" {% if codes %}required{% endif %} value="{{ selected.report_ref }}" placeholder="예: T9700001" autocomplete="off">
             <label for="result_notation">{% if codes %}조직검사결과 코드{% else %}검사결과{% endif %} <span class="required">필수</span></label><input id="result_notation" name="result_notation" maxlength="120" required placeholder="{% if codes %}예: TA#2(L), H#1{% else %}예: +{% endif %}" autocomplete="off">
             {% if codes %}<p class="field-help">코드#개수(보조표기)를 쉼표로 잇습니다. 미등록 코드는 저장하되 약어 사전 검토로 표시됩니다.</p>{% endif %}
             {% if selected.procedure_type == 'stomach' and codes %}<label for="sydney_notation">Sydney 등급 <span class="optional">선택</span></label><input id="sydney_notation" name="sydney_notation" maxlength="40" placeholder="예: HP-/Neu++/Mon++/Atr+/IM-" autocomplete="off">{% endif %}
-            <label for="site_summary">부위 {% if codes %}<span class="required">필수</span>{% else %}<span class="optional">선택</span>{% endif %}</label><input id="site_summary" name="site_summary" maxlength="80" {% if codes %}required{% endif %} value="{{ selected.site }}" autocomplete="off">
+            {% if selected.kind != 'CLO' %}<label for="site_summary">부위 {% if codes %}<span class="required">필수</span>{% else %}<span class="optional">선택</span>{% endif %}</label><input id="site_summary" name="site_summary" maxlength="80" {% if codes %}required{% endif %} value="{{ selected.site }}" autocomplete="off">{% endif %}
             <button class="button primary full" type="submit">결과 입력 완료 <span aria-hidden="true">→</span></button>
           </form>
           {% else %}

@@ -18,7 +18,7 @@ def today(request: Request):
     if actor.can("ledger.view"):
         service = request.app.state.dashboard_service
         snap = service.snapshot()
-        # CLO(A27)·분변잠혈(A22)은 조직검체 장부와 따로 쓰는 대장이다. 인계는 같은 수령이라 함께 센다.
+        # 장부별 업무를 따로 센다. 분변잠혈은 조직검체 인계에 포함하지 않는다(A31).
         context.update(tissue=snap, clo=service.snapshot(ledger="clo"), fobt=service.snapshot(ledger="fobt"),
                        today=snap["today"])
         lab = request.app.state.lab_service

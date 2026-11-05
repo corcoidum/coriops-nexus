@@ -1,6 +1,6 @@
 # Exam 단계
 
-> 원천: `ontology/coriops.yaml` · SHA-256 `29d5769f20184385677c16c5bc5b83ae4f42ae84953ca2be1d31d850ec993539`
+> 원천: `ontology/coriops.yaml` · SHA-256 `7c89601323c341de2bf088f8aebbc41710b99e016ebff955eab44cd1803746e4`
 > `python scripts/gen_docs.py`가 만든 문서다. 직접 고치지 말고 YAML을 고친 뒤 다시 만든다.
 
 단계는 DB에 저장하지 않는다. 연결된 기록(인계·결과·원장 지시·재검 계획)이 있는지로 매번 계산하므로, 상태 값과 실제 기록이 어긋나지 않는다. 화면 버튼은 아래 전이만 허용하고 권한은 `config/security.yaml`을 따른다.
@@ -12,7 +12,7 @@
 | 순서 | 단계 | 조건 |
 |---|---|---|
 | 1 | HANDOFF_PENDING (인계 대기) | 인계가 필요한 종류(config/ledger_app.yaml handoff=true)이고 위탁일이 없음 |
-| 2 | RESULT_PENDING (결과 대기) | 결과보고일이 없음 |
+| 2 | RESULT_PENDING (결과 대기) | 결과보고일이 없음. 또는 원장 지시가 없는 CLO에서 판정 값이 없거나 RESULT_UNPARSED 검토 표시가 남아 있음 |
 | 3 | DOCTOR_PENDING (원장 지시 대기) | 원장 지시 단계가 있는 장부(config/ledger_app.yaml ledgers.*.doctor_review, 기본 true)이고 원장 지시가 없음. CLO는 결과를 기록하면 종결(A27) |
 | 4 | FOLLOWUP (재검 예정) | 재검 계획이 있고 재검 완료일이 없음 |
 | 5 | CLOSED (종결) | 그 밖(재검 불필요 지시, 재검 완료, 또는 CLO 결과 기록) |
@@ -44,11 +44,11 @@ stateDiagram-v2
 
 ## Guard 정의
 
-- `handoff_required`: 종류의 handoff=true
-- `handoff_not_required`: 종류의 handoff=false
+- `handoff_required`: 종류의 handoff=true(조직검사만, A31)
+- `handoff_not_required`: 종류의 handoff=false(CLO·분변잠혈은 접수 후 결과 대기로, A31)
 - `bottle_count_matches`: 인계 대기 전체의 장부 병 수와 직원이 센 병 수가 같고 접수인·인계인·인수인이 모두 있음
 - `registered_notation`: 조직검사는 등록 코드 표기, CLO·Stool은 20자 이내 판정. Sydney는 위 검체만
-- `no_doctor_review`: 원장 지시 단계가 없는 장부(CLO 대장, A27). 결과를 기록하면 종결하며 제균치료·재검 판단은 EMR에서 한다
+- `no_doctor_review`: 원장 지시 단계가 없는 장부(CLO 대장, A27). 판정 값이 있고 RESULT_UNPARSED 표시가 없는 결과를 기록하면 종결하며 제균치료·재검 판단은 EMR에서 한다
 - `doctor_due_date`: 원장이 정한 재검 날짜가 있음(시스템이 간격을 계산하지 않음)
 - `doctor_reason`: 재검 불필요 사유가 있음. 여러 건 일괄 지시는 하나라도 실패하면 전부 취소
 - `done_date_not_future`: 재검 시행일이 오늘 이전

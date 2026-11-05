@@ -83,6 +83,8 @@ class LedgerEntry:
             return "RESULT_PENDING"
         if self.decided_at is None:
             if review_kinds is not None and self.kind not in review_kinds:
+                if not self.result_code or "RESULT_UNPARSED" in self.review_codes:
+                    return "RESULT_PENDING"
                 return "CLOSED"
             return "DOCTOR_PENDING"
         if self.followup_due is not None and self.followup_done_on is None:
