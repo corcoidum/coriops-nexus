@@ -86,7 +86,9 @@ def test_past_rows_skip_handoff_but_today_waits_for_handoff(service):
     assert stage(service, "H-0004") == "RESULT_PENDING"   # 10/12, 결과 없음 → 위탁된 것으로 간주
     assert stage(service, "H-0005") == "HANDOFF_PENDING"  # 오늘, 위탁일 없음
     # Stool 시트도 그대로 가져오고, 분변잠혈 대장에 보인다(A22).
-    assert service.snapshot()["flags"]["imported_pending"] == 4  # 조직 3 + CLO 1
+    assert service.snapshot()["flags"]["imported_pending"] == 3  # 조직 3
+    # CLO는 CLO 대장에 보이고, 결과가 있으면 원장 지시 없이 종결이다(A27).
+    assert service.snapshot(ledger="clo")["counts"]["CLOSED"] == 1
     assert service.snapshot(ledger="fobt")["flags"]["imported_pending"] == 1  # Stool 1
 
 
@@ -121,6 +123,25 @@ def test_reconcile_reports_differences_and_db_only_rows(service):
     assert summary["differences"][0]["fields"] == ["결과"]
     assert {item["entry"].chart_no for item in summary["missing"]} == {"H-0002", "H-0003"}
     assert by_chart(service, "H-0001").result_notation == "TA#2(L), H#1"  # 덮어쓰지 않음
+
+
+@pytest.mark.parametrize("changes", [
+    {"chart": "T-9102", "name": "테스트다른환자"},
+    {"day": date(2026, 10, 3)},
+    {"kind": "colon"},
+])
+def test_receipt_number_cannot_match_a_different_patient_or_exam(service, changes):
+    original = {"day": date(2026, 10, 2), "ref": "T9100001", "chart": "T-9101", "name": "테스트대조",
+                "reported": date(2026, 10, 5), "kind": "stomach"}
+    service.commit_import(service.preview_import(workbook_bytes(biopsy=[biopsy_row(**original)])))
+    token = service.preview_import(workbook_bytes(biopsy=[biopsy_row(**{**original, **changes})]))
+    summary = service.preview(token)
+    counts = summary["sheets"][0]["counts"]
+    assert (counts["new"], counts["same"], counts["different"], counts["invalid"]) == (0, 0, 0, 1)
+    assert any(issue.code == "IDENTITY_MISMATCH" for issue in summary["issues"])
+    assert len(service._store.entries()) == 1
+    with pytest.raises(DashboardError):
+        service.commit_import(token)
 
 
 def test_manual_entry_without_report_ref_matches_excel_row_by_chart_and_date(service):

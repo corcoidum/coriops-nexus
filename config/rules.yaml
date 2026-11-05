@@ -12,7 +12,7 @@ rules:
   PATH.L01:
     name: HANDOFF_MISSED
     title: 검체 인계 확인
-    # 시행날짜의 수탁기관 수령 시각이 지났는데 인계 기록이 없음(조직검사·Stool 당일 인수·당일 인계, A16)
+    # 시행날짜의 수탁기관 수령 시각이 지났는데 인계 기록이 없음(조직검사만, A31)
     assignee_role: NURSE
     priority: HIGH
     params: {}

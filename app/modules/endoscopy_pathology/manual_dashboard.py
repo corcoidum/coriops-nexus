@@ -1,6 +1,7 @@
 """조직검체·CLO·Stool 장부 업무 서비스. 라우트는 이 서비스만 호출한다.
 
 흐름: 접수 → 인계 대기 → 결과 대기 → 원장 지시 대기 → 재검 예정 → 종결.
+CLO는 원내 판정이라 인계가 없고, 결과를 기록하면 종결한다(A27).
 결과 설명·환자 안내는 EMR에서 관리하므로 기록하지 않는다(A12).
 저장소: 시연은 MemoryStore(합성 seed), 실사용은 PostgresStore(Alembic 스키마).
 """
@@ -8,7 +9,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from hashlib import sha256
 import json
@@ -23,11 +25,12 @@ import yaml
 
 from app.kernel.calendar import ClinicCalendar
 from app.kernel.clock import Clock, SystemClock
-from app.kernel.tasks import MemoryTaskStore, RuleBook, TaskEngine, TaskStore
+from app.kernel.database import on_rollback, transaction as database_transaction
+from app.kernel.tasks import MemoryTaskStore, PostgresTaskStore, RuleBook, TaskEngine, TaskStore
 from app.kernel.web import UserError
 
 from .excel_io import (
-    PAPER_FORMS, Issue, LedgerAppConfig, LedgerReader, ParsedWorkbook, RowDraft, WorkbookError,
+    EXPORT_COLUMNS, PAPER_FORMS, Issue, LedgerAppConfig, LedgerReader, ParsedWorkbook, RowDraft, WorkbookError,
     build_followup_workbook, build_paper_workbook, build_workbook, format_sex_age,
 )
 from .ledger import save_new_workbook
@@ -136,11 +139,14 @@ class ManualDashboardService:
         self._export_dir = export_dir if export_dir is not None else os.environ.get(
             self._config.export["directory_env"], "")
         self._handoff_kinds = self._config.handoff_kinds
+        self._review_kinds = self._config.review_kinds
         self._lock = RLock()
         self._preview: _Preview | None = None
         self._store = store if store is not None else MemoryStore()
         # 규칙·할 일(Stage B). 저장은 커널 실행기가, 후보 계산은 이 모듈의 rules.py가 맡는다.
-        self._tasks = TaskEngine(task_store or MemoryTaskStore(), rulebook or RuleBook.load(),
+        if task_store is None:
+            task_store = PostgresTaskStore(self.engine) if self.persistent else MemoryTaskStore()
+        self._tasks = TaskEngine(task_store, rulebook or RuleBook.load(),
                                  self._task_candidates, self._clock)
         if store is None:
             self.reset()
@@ -167,6 +173,22 @@ class ManualDashboardService:
         """DB 저장소의 연결. 로그인·접속기록이 같은 DB를 쓴다."""
         return self._store._engine
 
+    @contextmanager
+    def transaction(self):
+        """장부 변경·할 일·접속기록을 같은 업무로 저장한다. HTTP 핸들러 안에서 사용한다."""
+        with self._lock:
+            if not self.persistent:
+                yield
+                return
+            previous_preview = self._preview
+            try:
+                with database_transaction(self.engine):
+                    yield
+            except BaseException:
+                self._preview = previous_preview
+                self._tasks.invalidate_sync()
+                raise
+
     # ---------- 접속기록용 정보주체(차트번호) 조회
 
     def stage_of(self, entry_id: UUID) -> str:
@@ -181,7 +203,7 @@ class ManualDashboardService:
         return [e.chart_no for e in self._store.entries() if e.id in wanted]
 
     def ledger_path_of(self, entry_id: UUID) -> str:
-        """그 검사가 속한 장부 화면 주소(조직검체 /dashboard, 분변잠혈 /fobt)."""
+        """그 검사가 속한 장부 화면 주소(조직검체 /dashboard, CLO /clo, 분변잠혈 /fobt)."""
         return self._config.ledger_path(self._get(entry_id).kind)
 
     def ledger_path(self, ledger: str) -> str:
@@ -206,7 +228,17 @@ class ManualDashboardService:
         return self._clock.now().astimezone(KST).date()
 
     def _stage(self, entry: LedgerEntry) -> str:
-        return entry.stage_for(self._handoff_kinds)
+        return entry.stage_for(self._handoff_kinds, self._review_kinds)
+
+    def _closed_on(self, entry: LedgerEntry) -> date | None:
+        """종결일. 원장 지시 단계가 없는 종류(CLO)는 결과 기록일이다(A27)."""
+        if self._stage(entry) != "CLOSED":
+            return None
+        if entry.closed_on:
+            return entry.closed_on
+        if entry.kind not in self._review_kinds and entry.decided_at is None:
+            return entry.reported_on
+        return None
 
     def _get(self, entry_id: UUID) -> LedgerEntry:
         for entry in self._store.entries():
@@ -248,6 +280,9 @@ class ManualDashboardService:
             limit = (self._policy.rut_result_delay_business_days if entry.kind == "CLO"
                      else self._policy.result_delay_business_days)
             delayed = days > limit
+            if "RESULT_UNPARSED" in entry.review_codes:
+                return Alert("결과 표기 확인 · 다시 입력" + (" · 지연" if delayed else ""),
+                             "danger" if delayed else "warn")
             label = "위탁 후" if entry.entrusted_on else "검사 후"
             return Alert(f"{label} {days}진료일" + (" · 지연" if delayed else ""), "danger" if delayed else "normal")
         positive = self._config.is_positive(entry.kind, entry.result_code)
@@ -265,14 +300,24 @@ class ManualDashboardService:
             if left == 0:
                 return Alert("재검일 오늘", "danger")
             return Alert(f"재검 D-{left}", "warn" if left <= self._policy.followup_window_days else "normal")
+        if entry.decided_at is None and entry.kind not in self._review_kinds:
+            return Alert("결과 기록 · 종결", "normal")
         if not self._config.has_followup(entry.kind):
             return Alert(label, "warn") if positive else Alert("원장 확인", "normal")
         return Alert("재검 완료" if entry.followup_done_on else "재검 불필요", "normal")
 
-    def _pickup(self, today: date, now: datetime, pending: list[LedgerEntry]) -> dict:
+    def _pickup(self, today: date, now: datetime, pending: list[LedgerEntry], entries: list[LedgerEntry]) -> dict:
         """오늘 수탁기관 수령 시각과 인계 상태. 시각은 config/clinic.yaml이 원천이다."""
         pickup = self._calendar.pickup_time(today)
-        handed_today = [h for h in self._store.handoffs() if h.handed_at.astimezone(KST).date() == today]
+        handed_today = []
+        for handoff in self._store.handoffs():
+            if handoff.handed_at.astimezone(KST).date() != today:
+                continue
+            participants = [e for e in entries if e.handoff_id == handoff.id and e.kind in self._handoff_kinds]
+            if participants:
+                # 과거 합동 인계 기록은 보존하고, 화면의 건수·병 수만 현재 장부 기준으로 보여준다(A31).
+                handed_today.append(replace(handoff, case_count=len(participants),
+                                            specimen_count=sum(e.specimen_count or 1 for e in participants)))
         info = {"time": pickup, "pending_cases": len(pending),
                 "pending_specimens": sum(e.specimen_count or 1 for e in pending), "handed_today": handed_today}
         if not pending:
@@ -305,14 +350,15 @@ class ManualDashboardService:
         elif stage == "DOCTOR_PENDING":
             within = 0 if entry.needs_review else 1
         elif stage == "CLOSED":
-            within = -(entry.closed_on or entry.exam_date).toordinal()
+            within = -(self._closed_on(entry) or entry.exam_date).toordinal()
         else:
             within = 0
         return (STAGE_ORDER[stage], within, entry.exam_date, entry.chart_no)
 
     def _retention(self, entries: list[LedgerEntry], today: date) -> dict:
         years = self._security.retention_years
-        expired = [e for e in entries if e.closed_on and _years_after(e.closed_on, years) < today]
+        closed = [self._closed_on(e) for e in entries]
+        expired = [day for day in closed if day and _years_after(day, years) < today]
         return {"years": years, "status": self._security.retention_status, "expired": len(expired)}
 
     @staticmethod
@@ -360,7 +406,6 @@ class ManualDashboardService:
             # 재검 날짜가 없는 장부(분변잠혈)는 재검 예정 카드·기간 필터를 쓰지 않는다(A23).
             # 이름표는 모든 단계를 남겨 둔다: 예전에 재검 날짜를 적은 Stool 행도 목록에서 읽을 수 있어야 한다.
             stage_labels = dict(STAGE_LABELS) if followup else {**STAGE_LABELS, "DOCTOR_PENDING": "원장 확인 대기"}
-            stage_cards = [key for key in STAGE_LABELS if followup or key != "FOLLOWUP"]
             stage_actions = dict(STAGE_ACTIONS) if followup else {**STAGE_ACTIONS, "DOCTOR_PENDING": "원장 확인 기록"}
             if due and not followup:
                 raise DashboardError("이 장부는 재검 기간을 쓰지 않습니다.", 422)
@@ -380,13 +425,20 @@ class ManualDashboardService:
             stored = self._store.entries()
             stages = {e.id: self._stage(e) for e in stored}
             ordered = sorted(stored, key=lambda e: self._sort_key(e, stages[e.id], today))
-            # 인계 대기는 같은 씨젠 수령 때 함께 나가므로 장부와 관계없이 모두 센다.
-            pending = [e for e in ordered if stages[e.id] == "HANDOFF_PENDING"]
-            pickup = self._pickup(today, now, pending)
-            alerts = {e.id: self._alert(e, stages[e.id], today, pickup) for e in ordered}
             in_ledger = [e for e in ordered if e.kind in kinds]
+            pending = [e for e in in_ledger if stages[e.id] == "HANDOFF_PENDING"]
+            pickup = self._pickup(today, now, pending, in_ledger)
+            alerts = {e.id: self._alert(e, stages[e.id], today, pickup) for e in ordered}
             scoped = [e for e in in_ledger if kind == "ALL" or e.kind == kind]
             counts = {key: sum(stages[e.id] == key for e in scoped) for key in STAGE_LABELS}
+            # 장부에 없는 단계 카드는 숨긴다: CLO 대장은 인계·원장 지시가 없다(A27). 남은 건이 있으면 보인다.
+            has_handoff = any(k in self._handoff_kinds for k in kinds)
+            has_review = any(k in self._review_kinds for k in kinds)
+            stage_cards = [key for key in STAGE_LABELS
+                           if (followup or key != "FOLLOWUP") and (counts[key] or not (
+                               (key == "HANDOFF_PENDING" and not has_handoff)
+                               or (key == "DOCTOR_PENDING" and not has_review)))]
+            columns = meta.get("export_headers")
 
             def count(stage_key: str, test) -> int:
                 return sum(stages[e.id] == stage_key and test(e) for e in scoped)
@@ -428,9 +480,14 @@ class ManualDashboardService:
                 "kind_labels": {k: self._config.kinds[k]["label"] for k in kinds},
                 "procedure_labels": PROCEDURE_LABELS, "handoff_kinds": self._handoff_kinds,
                 "ledger": ledger, "ledger_label": self._config.ledgers[ledger]["label"],
+                "has_handoff": has_handoff, "review_kinds": self._review_kinds,
+                # 수기 엑셀과 같은 열로 보는 장부(CLO 5열). 이름은 목록이라 가린다.
+                "columns": columns, "cells": {e.id: self._cells(e, columns) for e in cases} if columns else {},
+                "can_export_ledger": self._export_prefix(ledger) is not None,
                 "total": len(in_ledger), "pickup": pickup, "handoff_defaults": self._policy.handoff_defaults,
                 "sydney_text": self._codebook.format_sydney(dict(selected.sydney)) if selected else "",
-                "delay_days": self._policy.result_delay_business_days,
+                "delay_days": (self._policy.rut_result_delay_business_days if kinds == ("CLO",)
+                               else self._policy.result_delay_business_days),
                 "window_days": self._policy.followup_window_days,
                 "retention": self._retention(stored, today), "persistent": self.persistent,
                 "export_ready": bool(self._export_dir), "exports": self._store.exports()[-3:][::-1],
@@ -441,6 +498,14 @@ class ManualDashboardService:
                             "due_from": due_from.isoformat() if due_from else "",
                             "due_to": due_to.isoformat() if due_to else ""},
             }
+
+    @staticmethod
+    def _cells(entry: LedgerEntry, columns: list[str]) -> list[str]:
+        values = []
+        for name in columns:
+            value = entry.display_name if name == "수진자명" else EXPORT_COLUMNS[name](entry)
+            values.append(value.strftime("%Y.%m.%d") if isinstance(value, date) else str(value or ""))
+        return values
 
     # ---------- 접수·인계·결과·지시
 
@@ -461,6 +526,8 @@ class ManualDashboardService:
             raise DashboardError("나이는 0~130 숫자로 입력해 주세요.", 422)
         if kind == "CLO":
             procedure_type = "stomach"
+        if kind == "STOOL":
+            specimen_count = ""  # 새 분변잠혈 접수에는 병 수를 받지 않는다. 과거 저장값은 유지한다(A31).
         if procedure_type not in ("", *PROCEDURE_LABELS):
             raise DashboardError("검사명(stomach·colon)을 선택해 주세요.", 422)
         if kind == "BIOPSY" and not procedure_type:
@@ -510,7 +577,7 @@ class ManualDashboardService:
             self._write(inserted=entries)
             return [e.id for e in entries]
 
-    def handoff(self, registered_by: str, handed_by: str, receiver_name: str, confirmed_count: int) -> None:
+    def handoff(self, registered_by: str, handed_by: str, receiver_name: str, confirmed_count: int) -> list[str]:
         """인계 대기 검체 전체를 한 번에 넘긴다. 확인 병 수가 장부와 다르면 기록하지 않는다."""
         with self._lock:
             pending = [e for e in self._store.entries() if self._stage(e) == "HANDOFF_PENDING"]
@@ -529,6 +596,7 @@ class ManualDashboardService:
             self._write(handoff=record, updated=[
                 replace_entry(e, now, handoff_id=record.id, entrusted_on=today, registered_by=names[0],
                               handed_by=names[1], received_by=names[2]) for e in pending])
+            return [e.chart_no for e in pending]
 
     def receive(self, entry_id: UUID, report_ref: str, result_notation: str, site_summary: str,
                 sydney_notation: str = "") -> None:
@@ -652,6 +720,12 @@ class ManualDashboardService:
                     counts["invalid"] += 1
                     continue
                 match = by_ref.get((draft.kind, draft.report_ref)) if draft.report_ref else None
+                if match is not None and (match.chart_no != draft.chart_no or match.exam_date != draft.exam_date
+                                          or (match.procedure_type and draft.procedure_type
+                                              and match.procedure_type != draft.procedure_type)):
+                    issues.append(Issue(sheet.sheet, draft.row, "IDENTITY_MISMATCH", "접수번호"))
+                    counts["invalid"] += 1
+                    continue
                 if match is None:
                     match = next((e for e in by_natural[(draft.kind, draft.chart_no, draft.exam_date)]
                                   if e.id not in matched and (not draft.procedure_type or not e.procedure_type
@@ -687,15 +761,22 @@ class ManualDashboardService:
         }
         return summary, new_rows
 
-    def preview_import(self, data: bytes) -> str:
-        """업로드 엑셀을 메모리에서 읽어 DB와 대조한다. 아무것도 저장하지 않는다."""
+    def preview_import(self, data: bytes, ledger: str = "") -> str:
+        """업로드 엑셀을 메모리에서 읽어 DB와 대조한다. 아무것도 저장하지 않는다.
+        ledger를 고르면 시트 이름과 관계없이 그 장부 파일로 읽는다(A27)."""
         with self._lock:
+            kind = None
+            if ledger:
+                kinds = self._ledger_kinds(ledger)
+                if len(kinds) != 1:
+                    raise DashboardError("시트 이름으로 구분해 올려 주세요.", 422)
+                kind = kinds[0]
             if not data:
                 raise DashboardError("엑셀 파일을 선택해 주세요.", 422)
             if len(data) > self._security.max_upload_bytes:
                 raise DashboardError("파일이 너무 큽니다. 5MB 이하로 올려 주세요.", 413)
             try:
-                parsed = self._reader.read(data, self._today())
+                parsed = self._reader.read(data, self._today(), kind)
             except WorkbookError as error:
                 raise DashboardError(str(error), 422) from None
             summary, new_rows = self._classify(parsed, self._store.entries())
@@ -761,24 +842,37 @@ class ManualDashboardService:
             raise DashboardError("클라우드 동기화 폴더에는 저장하지 않습니다.", 409)
         return resolved
 
-    def export(self) -> ExportRecord:
-        with self._lock:
+    def _export_prefix(self, ledger: str) -> str | None:
+        """장부 사본 파일 이름. 분변잠혈은 종이 대장 ③ 양식으로 따로 출력하므로 없다(A22)."""
+        if ledger == "tissue":
+            return self._config.export["file_prefix"]
+        return self._config.ledgers[ledger].get("file_prefix")
+
+    def ledger_choices(self) -> dict[str, dict[str, str]]:
+        """엑셀 화면의 장부 선택지. 가져오기는 종류가 하나인 장부, 출력은 사본 양식이 있는 장부."""
+        ledgers = self._config.ledgers
+        return {"import": {n: m["label"] for n, m in ledgers.items() if len(self._config.ledger_kinds(n)) == 1},
+                "export": {n: m["label"] for n, m in ledgers.items() if self._export_prefix(n)}}
+
+    def export(self, ledger: str = "tissue") -> ExportRecord:
+        """장부 하나의 사본을 지정 폴더에 새 파일로 저장한다(조직검체, CLO 대장 A27)."""
+        with self.transaction():
+            kinds = self._ledger_kinds(ledger)
+            prefix = self._export_prefix(ledger)
+            if prefix is None:
+                raise DashboardError("이 장부는 종이 대장 대조 화면에서 출력합니다.", 422)
             folder = self._export_folder()
-            stored = self._store.entries()
-            if not stored:
-                raise DashboardError("출력할 장부가 없습니다.", 422)
-            # 조직검체 장부 사본이다. 분변잠혈은 종이 대장 ③ 양식으로 따로 출력한다(A22).
-            kinds = self._config.ledger_kinds("tissue")
-            stored = [e for e in stored if e.kind in kinds]
+            stored = [e for e in self._store.entries() if e.kind in kinds]
             if not stored:
                 raise DashboardError("출력할 장부가 없습니다.", 422)
             workbook = build_workbook([(e, self._stage(e)) for e in stored], self._config, self._codebook, kinds)
             now = self._clock.now()
-            name = f"{self._config.export['file_prefix']}_{now.astimezone(KST):%Y%m%d_%H%M%S}.xlsx"
+            name = f"{prefix}_{now.astimezone(KST):%Y%m%d_%H%M%S}.xlsx"
             try:
                 save_new_workbook(workbook, folder / name)  # 같은 이름이 있으면 덮어쓰지 않고 실패
             except FileExistsError:
                 raise DashboardError("같은 이름의 파일이 있습니다. 잠시 뒤 다시 출력해 주세요.", 409) from None
+            on_rollback(lambda: (folder / name).unlink(missing_ok=True))
             record = ExportRecord(uuid4(), now, name, len(stored))
             self._write(export=record)
             return record
@@ -786,7 +880,7 @@ class ManualDashboardService:
     def export_followups(self, kind: str = "ALL", query: str = "", due: str = "", due_from: date | None = None,
                          due_to: date | None = None, ledger: str = "tissue") -> tuple[ExportRecord, list[str]]:
         """화면의 재검 대상 조건 그대로 대상자 목록만 지정 폴더에 저장한다. (기록, 차트번호들)"""
-        with self._lock:
+        with self.transaction():
             kinds = self._ledger_kinds(ledger)
             if kind != "ALL" and kind not in kinds:
                 raise DashboardError("알 수 없는 검사 종류입니다.", 422)
@@ -812,6 +906,7 @@ class ManualDashboardService:
                 save_new_workbook(workbook, folder / name)
             except FileExistsError:
                 raise DashboardError("같은 이름의 파일이 있습니다. 잠시 뒤 다시 출력해 주세요.", 409) from None
+            on_rollback(lambda: (folder / name).unlink(missing_ok=True))
             record = ExportRecord(uuid4(), now, name, len(rows))
             self._write(export=record)
             return record, [e.chart_no for e in rows]
@@ -881,7 +976,7 @@ class ManualDashboardService:
 
     def export_paper(self, form: str, start: date | None = None, end: date | None = None) -> tuple[ExportRecord, list[str]]:
         """종이 대장과 같은 양식으로 지정 폴더에 저장한다. (기록, 차트번호들)"""
-        with self._lock:
+        with self.transaction():
             folder = self._export_folder()
             data = self.paper_rows(form, start, end)
             if not data["rows"]:
@@ -895,6 +990,7 @@ class ManualDashboardService:
                 save_new_workbook(workbook, folder / name)
             except FileExistsError:
                 raise DashboardError("같은 이름의 파일이 있습니다. 잠시 뒤 다시 출력해 주세요.", 409) from None
+            on_rollback(lambda: (folder / name).unlink(missing_ok=True))
             record = ExportRecord(uuid4(), now, name, len(data["rows"]))
             self._write(export=record)
             return record, [row["chart_no"] for row in data["rows"]]

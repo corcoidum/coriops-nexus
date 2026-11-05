@@ -25,6 +25,8 @@ services:
       postgres-test:
         condition: service_healthy
     environment:
+      CORIOPS_TEST_DATABASE_URL: 'postgresql+psycopg://coriops_test@postgres-test:5432/coriops_test'
+      CORIOPS_TEST_ALLOW_RESET: '1'
       PGHOST: postgres-test
       PGPORT: '5432'
       PGDATABASE: coriops_test

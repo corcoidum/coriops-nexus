@@ -85,6 +85,12 @@ def test_generator_is_deterministic():
     assert generator.render(source) == generator.render(source)
 
 
+def test_generator_matches_windows_and_unix_line_endings():
+    generator = _load_generator()
+    source = (ROOT / "ontology" / "coriops.yaml").read_bytes().replace(b"\r\n", b"\n")
+    assert generator.render(source) == generator.render(source.replace(b"\n", b"\r\n"))
+
+
 @pytest.mark.parametrize("name", sorted(IMPLEMENTED))
 def test_implemented_class_matches_its_table(name):
     cls = IMPLEMENTED[name]

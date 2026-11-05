@@ -51,6 +51,15 @@ def service(engine, clock):
     return ManualDashboardService(clock=clock, store=PostgresStore(engine), task_store=PostgresTaskStore(engine))
 
 
+def resulted(service, chart):
+    """조직검사 1건을 원장 지시 대기까지. CLO는 결과를 기록하면 종결해 쓰지 않는다(A27)."""
+    entry_id = service.register("BIOPSY", chart, "테스트디비", date(2026, 11, 5), procedure_type="stomach",
+                                specimen_count="1")
+    service.handoff("테스트 접수", "테스트 인계", "테스트 수령", 1)
+    service.receive(entry_id, f"R{chart[2:]}", "TA#1(L)", "합성 위치")
+    return entry_id
+
+
 def test_tasks_open_close_and_stay_unique_in_postgres(service, clock, engine):
     entry_id = service.register("BIOPSY", "T-0801", "테스트디비", date(2026, 11, 5), procedure_type="colon",
                                 specimen_count="2")
@@ -73,8 +82,7 @@ def test_tasks_open_close_and_stay_unique_in_postgres(service, clock, engine):
 
 
 def test_people_close_tasks_once_in_postgres(service, clock):
-    entry_id = service.register("CLO", "T-0802", "테스트디비", date(2026, 11, 5))
-    service.receive(entry_id, "", "+", "")
+    resulted(service, "T-0802")
     [task] = [t for t in service.tasks.store.tasks() if t.rule_id == "PATH.L03"]
     closed = service.tasks.close(task.id, "DISMISSED", "테스트원장", "합성 사유")
     assert (closed.status, closed.resolved_by, closed.resolution_note) == ("DISMISSED", "테스트원장", "합성 사유")
@@ -104,8 +112,7 @@ def test_removed_rules_are_disabled_not_deleted(service, engine, clock, tmp_path
     "UPDATE tasks SET resolved_at = now()",  # OPEN인데 처리 시각이 있으면 거부
 ])
 def test_task_constraints(service, engine, sql):
-    entry_id = service.register("CLO", "T-0803", "테스트디비", date(2026, 11, 5))
-    service.receive(entry_id, "", "+", "")
+    resulted(service, "T-0803")
     with pytest.raises(IntegrityError):
         with engine.begin() as connection:
             connection.execute(text(sql))

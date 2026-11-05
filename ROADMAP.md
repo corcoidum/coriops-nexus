@@ -35,7 +35,7 @@
 | 0 Foundation | README·개인정보 원칙·Python·pytest·CI·AGENTS.md | ✅ | `pyproject.toml`, `tests/` 299개, `.github/workflows/ci.yml`, `AGENTS.md` |
 | 1 Ontology | Entity·관계·상태·FHIR | ✅ v0.2 | `ontology/coriops.yaml` v0.2 21클래스(구현 18·예정 3)·`scripts/gen_docs.py`·YAML=코드=DB 일치 시험 |
 | 2 PostgreSQL ERD | 테이블·FK·제약·마이그레이션·감사 필드 | ✅ | Alembic 0001~0003. `patients`·`exams`·`specimens`·`exam_results`·`doctor_reviews`·`followups` |
-| 3 Endoscopy + Specimen MVP | 접수 → 인계 → 결과 → 원장 지시 → 재검 | ✅ | DB 저장 장부, 3자 인계·병 수 대조, 엑셀 가져오기·대조·출력, 종이 대장 ①·② 대조·같은 양식 출력(A15) |
+| 3 Endoscopy + Specimen MVP | 접수 → 인계 → 결과 → 원장 지시 → 재검 | ✅ | DB 저장 장부, 3자 인계·병 수 대조, 엑셀 가져오기·대조·출력, 종이 대장 ①·② 대조·같은 양식 출력(A15). 장부별 화면: 조직검체·CLO 대장 5열(A27)·분변잠혈 대장(A22) |
 | 4 Rule Engine | 규칙이 누락을 찾아냄 | ✅ | L01~L05(`config/rules.yaml` v0.3), 실행 기록, 중복 방지·자동 해소(B-1) |
 | 5 Task Engine | 담당·상태·출처가 있는 Task | 🟡 | `tasks` 저장·닫기(B-1). "오늘 할 일" 화면은 B-2 |
 | 6 Lab Integration | 씨젠 결과 → Observation | ⚪ | — |
@@ -83,6 +83,7 @@
 ### Stage B — Rule + Task Engine (초안 Phase 4·5)
 
 - **B-1 ✅** 규칙 L01~L05·실행기·`rules`·`rule_runs`·`tasks`(Alembic 0004), `ledger_entries_legacy` 삭제(A17). Stool 당일 인계(A16)
+- **CLO 대장 분리 ✅** (B-2 전에 끼워 넣음, A27): `/clo`, 수기 엑셀과 같은 5열 목록·출력, 결과 기록으로 종결(L03 없음), 장부 종류를 골라 가져오기
 - **B-2** "오늘 할 일" 화면(오늘·기한 지남·대기·완료, 내 역할), 확인 완료·해당 없음, 대시보드 숫자 연결
 
 - 규칙이 Task를 **DB에 저장**한다. 같은 대상·같은 회차는 한 번만 저장하고(중복 방지), 실행 이력을 남긴다
