@@ -1335,6 +1335,7 @@ input:focus,select:focus {
 .paper-filters { display:flex; flex-wrap:wrap; align-items:end; gap:16px; padding:0 22px 20px; }
 .lab-paper-panel { margin-top:20px; }
 .lab-paper-table { min-width:1450px; }
+.task-close-form { display:grid; gap:6px; min-width:175px; max-width:250px; }
 
 .nav-home {
   margin-top:28px;

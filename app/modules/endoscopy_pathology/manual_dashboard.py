@@ -201,6 +201,14 @@ class ManualDashboardService:
         """그 검사가 속한 장부 화면 주소(조직검체 /dashboard, CLO /clo, 분변잠혈 /fobt)."""
         return self._config.ledger_path(self._get(entry_id).kind)
 
+    def task_source(self, task) -> str | None:
+        if task.subject_type != "exam":
+            return None
+        try:
+            return f"{self.ledger_path_of(task.subject_id)}?selected_id={task.subject_id}"
+        except UserError:
+            return None
+
     def ledger_path(self, ledger: str) -> str:
         """폼이 보낸 장부 이름을 알려진 주소로만 바꾼다. 모르는 값이면 조직검체 장부."""
         return self._config.ledgers.get(ledger, self._config.ledgers["tissue"])["path"]

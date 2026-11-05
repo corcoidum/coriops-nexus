@@ -91,6 +91,41 @@ def logs(engine):
         return connection.execute(select(access_logs).order_by(access_logs.c.sequence_no)).all()
 
 
+def test_task_close_is_audited_atomic_and_role_checked(parts, clock, monkeypatch):
+    app, auth, logger, service = parts
+    make_staff(auth, "tasknurse", ["NURSE"])
+    make_staff(auth, "taskadmin", ["ADMIN"])
+    entry_id = service.register("BIOPSY", "T-0910", "테스트할일", date(2026, 11, 4),
+                                procedure_type="stomach", specimen_count="1")
+    service.tasks.run()
+    task = next(t for t in service.tasks.store.tasks() if t.rule_id == "PATH.L01")
+    path = f"/tasks/{task.id}/close"
+    with client_for(app) as client:
+        login(client, "taskadmin")
+        response = client.post(path, data={"status": "DONE", "csrf_token": csrf(client)})
+        assert response.status_code == 403
+    original = logger.record
+    def fail(**kwargs):
+        original(**kwargs)
+        if kwargs["target_type"] == "task_close":
+            raise RuntimeError("SYNTHETIC_AUDIT_FAILURE")
+    with client_for(app) as client:
+        login(client, "tasknurse")
+        token = csrf(client)
+        before = len(logs(service.engine))
+        monkeypatch.setattr(logger, "record", fail)
+        with pytest.raises(RuntimeError):
+            client.post(path, data={"status": "DONE", "csrf_token": token})
+        assert next(t for t in service.tasks.store.tasks() if t.id == task.id).status == "OPEN"
+        assert len(logs(service.engine)) == before
+        monkeypatch.setattr(logger, "record", original)
+        response = client.post(path, data={"status": "DONE", "csrf_token": token}, follow_redirects=False)
+        assert response.status_code == 303
+        assert next(t for t in service.tasks.store.tasks() if t.id == task.id).resolved_by == "tasknurse"
+        assert service.subject_of(entry_id) == "T-0910"
+        assert client.post(path, data={"status": "DONE", "csrf_token": token}).status_code == 409
+
+
 @pytest.mark.parametrize("operation,target", [
     ("register", "ledger_entry"), ("handoff", "ledger_handoff"), ("receive", "ledger_result"),
     ("decide", "ledger_decision"), ("bulk", "ledger_decision_bulk"), ("followup", "ledger_followup"),

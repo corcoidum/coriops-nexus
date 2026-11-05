@@ -1,0 +1,17 @@
+{% extends "ledger_base.html" %}
+{% block title %}담당별 할 일{% endblock %}
+{% block crumb %}오늘 할 일 / 담당별 처리{% endblock %}
+{% block footer %}<span>CoriOps Nexus · 담당별 할 일</span><span>확인 기록과 검사 상태는 별도로 관리합니다</span>{% endblock %}
+{% block content %}
+<div class="page-heading"><div><span class="eyebrow">TASKS</span><h1>{% if scope == 'mine' %}내 역할의 할 일{% else %}전체 역할의 할 일{% endif %}</h1><p>원본 업무를 확인한 뒤 처리합니다. 이 기록만으로 검사 결과·원장 지시·검사 종결 상태가 바뀌지 않습니다.</p></div><a class="text-link" href="/">장부별 현황</a></div>
+<nav class="kind-tabs" aria-label="담당 역할"><a class="{% if scope == 'mine' %}active{% endif %}" href="/tasks?scope=mine&amp;bucket={{ bucket }}">내 역할 ({{ actor.role_labels }})</a><a class="{% if scope == 'all' %}active{% endif %}" href="/tasks?scope=all&amp;bucket={{ bucket }}">전체 역할</a></nav>
+<section class="stat-grid four" aria-label="할 일 기간별 건수">{% for key, label in buckets.items() %}<a class="stat-card {% if bucket == key %}selected{% endif %}" href="/tasks?scope={{ scope }}&amp;bucket={{ key }}"><div class="stat-top">{{ label }}</div><div class="stat-number">{{ counts[key] }}<span>건</span></div></a>{% endfor %}</section>
+<section class="panel"><div class="panel-header"><div><h2>{{ buckets.get(bucket, '열린 할 일 전체') }} <span class="count-tag">{{ rows|length }}</span></h2><p>처리됨은 최근 {{ done_days }}일의 확인 완료·해당 없음·자동 해소를 구분합니다.</p></div><a class="text-link" href="/tasks?scope={{ scope }}">열린 할 일 전체</a></div>
+<div class="table-scroll"><table><thead><tr><th scope="col">업무</th><th scope="col">담당</th><th scope="col">기한</th><th scope="col">상태</th><th scope="col">처리</th></tr></thead><tbody>
+{% for row in rows %}{% set task = row.task %}<tr>
+<td><strong>{{ task.title }}</strong><span class="cell-sub">{{ task.rule_id }}</span>{% if row.source %}<a class="text-link" href="{{ row.source }}">원본 업무 열기 →</a>{% else %}<span class="cell-sub">원본 업무를 찾을 수 없습니다</span>{% endif %}</td>
+<td>{{ role_labels[task.assignee_role] }}</td><td>{{ task.due_at.astimezone(kst).strftime('%Y.%m.%d %H:%M') }}</td><td>{{ status_labels[task.status] }}{% if task.resolved_at %}<span class="cell-sub">{{ task.resolved_by or '시스템' }} · {{ task.resolved_at.astimezone(kst).strftime('%Y.%m.%d %H:%M') }}</span>{% if task.resolution_note %}<span class="cell-sub">{{ task.resolution_note }}</span>{% endif %}{% endif %}</td>
+<td>{% if row.can_close %}<form action="/tasks/{{ task.id }}/close" method="post" class="task-close-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="bucket" value="{{ bucket }}"><input type="hidden" name="scope" value="{{ scope }}"><label class="visually-hidden" for="status-{{ task.id }}">처리 상태</label><select id="status-{{ task.id }}" name="status"><option value="DONE">확인 완료</option><option value="DISMISSED">해당 없음</option></select><label class="visually-hidden" for="note-{{ task.id }}">처리 사유</label><input id="note-{{ task.id }}" name="note" maxlength="120" placeholder="해당 없음이면 사유 필수" autocomplete="off"><button class="button secondary" type="submit">처리 기록</button></form>{% elif task.status == 'OPEN' %}<span class="cell-sub">담당 역할만 처리 가능</span>{% else %}—{% endif %}</td>
+</tr>{% else %}<tr><td colspan="5" class="empty-state">이 조건의 할 일이 없습니다.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}

@@ -24,4 +24,6 @@ def today(request: Request):
         lab = request.app.state.lab_service
         if lab is not None:
             context["blood"] = lab.snapshot()
+        tasks = request.app.state.task_service.snapshot(actor)
+        context["task_counts"] = tasks["counts"]
     return render(request, "home.html", context)
