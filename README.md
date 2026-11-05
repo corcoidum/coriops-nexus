@@ -38,7 +38,7 @@ GitHub 저장소: [corcoidum/coriops-nexus](https://github.com/corcoidum/coriops
 6. [개인정보 대응표](docs/privacy/compliance-matrix.md), [보유·파기 초안](docs/privacy/retention-policy.md)
 7. [확장 계약·Phase Gate](docs/roadmap.md), [검증 계획](docs/verification-plan.md)
 
-`ontology/coriops.yaml`(v0.2)이 클래스·속성·enum·관계·FHIR 대응·단계의 단일 원천이다. `docs/ontology.md`, `erd.md`, `state-machine.md`, `fhir-mapping.md`는 `python scripts/gen_docs.py`로 만들며 직접 고치지 않는다. 시험(`tests/prototype/test_ontology.py`)이 YAML·코드 테이블·생성 문서의 일치를 검사한다. 이전 검토안(0.1-design.2)은 [docs/archive](docs/archive/ontology-0.1-design.2.yaml)에 있다. `config/`는 설계 데이터이며 실행 설정으로 사용하지 않는다.
+`ontology/coriops.yaml`이 클래스·속성·enum·관계·FHIR 대응·단계의 단일 원천이다. `docs/ontology.md`, `erd.md`, `state-machine.md`, `fhir-mapping.md`는 `python scripts/gen_docs.py`로 만들며 직접 고치지 않는다. 시험(`tests/prototype/test_ontology.py`)이 YAML·코드 테이블·생성 문서의 일치를 검사한다. 이전 검토안(0.1-design.2)은 [docs/archive](docs/archive/ontology-0.1-design.2.yaml)에 있다. `config/`의 진료일·업무·권한·입력 제한을 실행 시 읽으며, 가정·승인 상태는 운영 정책의 확정과 구분한다.
 
 ## 지정 기술 스택
 
