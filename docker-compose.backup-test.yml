@@ -32,12 +32,14 @@ services:
     entrypoint: []
     command: [age-keygen, -o, /keys/identity.key]
     network_mode: none
+    user: '${CORIOPS_BACKUP_TEST_UID:-0}:${CORIOPS_BACKUP_TEST_GID:-0}'
     read_only: true
     volumes: ['${CORIOPS_BACKUP_TEST_KEYS:?키 경로 필요}:/keys']
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
   archive:
     image: coriops-backup:local
+    user: '${CORIOPS_BACKUP_TEST_UID:-0}:${CORIOPS_BACKUP_TEST_GID:-0}'
     environment:
       PGHOST: source
       PGPORT: '5432'

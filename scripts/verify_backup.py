@@ -24,13 +24,18 @@ def main() -> int:
     keys.mkdir()
     archive.mkdir()
     env = dict(os.environ, CORIOPS_BACKUP_TEST_PASSWORD=secrets.token_hex(24),
-               CORIOPS_BACKUP_TEST_KEYS=str(keys), CORIOPS_BACKUP_TEST_DIR=str(archive))
+               CORIOPS_BACKUP_TEST_KEYS=str(keys), CORIOPS_BACKUP_TEST_DIR=str(archive),
+               # Linux bind mount의 소유자와 맞춘다. Docker Desktop은 호스트 UID가 없다.
+               CORIOPS_BACKUP_TEST_UID=str(getattr(os, "getuid", lambda: 0)()),
+               CORIOPS_BACKUP_TEST_GID=str(getattr(os, "getgid", lambda: 0)()))
     command = ["docker", "compose", "-p", project, "-f", str(ROOT / "docker-compose.backup-test.yml")]
     def run(*args, success=True, expected_error=None):
         result = subprocess.run([*command, *args], cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8")
         if success and result.returncode:
             # 명령 인수 대신 비밀값을 가린 마지막 진단 한 줄만 남긴다.
-            detail = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "NO_DIAGNOSTIC"
+            diagnostics = [line for line in result.stderr.strip().splitlines()
+                           if "report unexpected or unhelpful errors" not in line]
+            detail = diagnostics[-1] if diagnostics else "NO_DIAGNOSTIC"
             detail = detail.replace(env["CORIOPS_BACKUP_TEST_PASSWORD"], "[redacted]")
             if "AGE-SECRET-KEY" in detail:
                 detail = "KEY_DIAGNOSTIC_REDACTED"
