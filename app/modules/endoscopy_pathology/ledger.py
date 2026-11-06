@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import date
 from hashlib import sha256
+from importlib.resources import files
 from io import BytesIO
 import json
 from pathlib import Path
@@ -79,7 +80,8 @@ class MergeResult:
 
 def load_policy(path: Path | None = None) -> LedgerPolicy:
     """실제 Import 매핑과 분리된 합성 출력 정책을 읽는다."""
-    source = path or Path(__file__).resolve().parents[3] / "config/ledger_mapping.yaml"
+    # 설치된 패키지에서도 같은 정책을 읽도록 package resource로 둔다.
+    source = Path(path) if path else files(__package__).joinpath("ledger_mapping.yaml")
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
     columns = tuple(Column(**column) for column in data["columns"])
     allowed_fields = set(ResultRecord.__dataclass_fields__) - {"site_text", "result_text"}
@@ -159,8 +161,11 @@ def merge_records(
         if all(value is None for value in values):
             continue
         key = (sheet.cell(row, report_column).value, sheet.cell(row, chart_column).value)
-        if any(not isinstance(value, str) or not value.strip() for value in key):
+        if any(value is None or (isinstance(value, str) and not value.strip()) for value in key):
             raise ValueError("EXISTING_ROW_KEY_MISSING")
+        # 숫자 셀은 앞자리 0이 사라져 문자열 키와 같은지 알 수 없으므로 추측해 맞추지 않는다.
+        if any(not isinstance(value, str) for value in key):
+            raise ValueError("EXISTING_ROW_KEY_NOT_TEXT")
         if key in existing:
             raise ValueError("DUPLICATE_EXISTING_KEY")
         existing[key] = row

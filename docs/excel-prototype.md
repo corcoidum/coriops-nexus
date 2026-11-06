@@ -6,7 +6,7 @@
 
 ## 확인된 형식과 처리
 
-열 순서는 `config/ledger_mapping.yaml`에 사용자 제공 그대로 정의한다. 한 시트만 만들며 숨김 열·추가 환자정보·재검 날짜 열을 임의로 추가하지 않는다. 다음 내시경 시점은 원장 지시를 별도로 기록할 이후 기능이다.
+열 순서는 `app/modules/endoscopy_pathology/ledger_mapping.yaml`에 사용자 제공 그대로 정의한다. 한 시트만 만들며 숨김 열·추가 환자정보·재검 날짜 열을 임의로 추가하지 않는다. 다음 내시경 시점은 원장 지시를 별도로 기록할 이후 기능이다.
 
 | 분류 | 열 | 프로토타입 처리 |
 |---|---|---|
@@ -59,7 +59,7 @@ production 의존성은 지정된 openpyxl 3.1.5와 YAML 파서 PyYAML 6.0.3이�
 
 - `app/modules/endoscopy_pathology/ledger.py`: 정책 읽기·입력 사전 검증·신규 행 추가·중복/변경 검토·새 파일 저장.
 - `ledger_demo.py`: 실제 파일·계정 입력이 없는 합성 자료 3건 시연.
-- `config/ledger_mapping.yaml`: 사용자 제공 17열의 순서·타입·폭·보류/수동 열 정책.
+- `app/modules/endoscopy_pathology/ledger_mapping.yaml`: 사용자 제공 17열의 순서·타입·폭·보류/수동 열 정책.
 - `tests/prototype/`: 장부 계약·실제 PostgreSQL16 연결·외부 socket 차단 시험.
 - `pyproject.toml`, `Dockerfile.prototype`, `docker-compose.prototype.yml`, `.dockerignore`: Python3.12 실행·내부 DB 시험·네트워크 없는 시연 환경.
 - README·확인사항·ADR-005·로드맵·검증계획: 사용자 A08/A09와 실제 구현 범위를 반영.
