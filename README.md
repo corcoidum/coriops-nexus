@@ -1,12 +1,22 @@
 # CoriOps Nexus v0.1
 
+> **CoriOps Nexus = Clinic Operations Platform**
+>
+> CoriOps Nexus는 의원의 실제 업무 흐름과 규칙에 맞춘 **원내 맞춤형 Clinic Operations Platform**이다. 의원에 흩어진 데이터와 업무 규칙을 연결하고, 놓치면 안 되는 후속 업무를 찾아내고 추적한다.
+
+- **업무 범위:** Endoscopy Scheduling(내시경 예약), Pathology / Specimen(병리·검체), Lab, Screening(검진), BMD / Vaccine / Recall, Task Center, Audit.
+- **공통 기반·확장 범위:** PostgreSQL / Ontology, Rule Engine, Task Engine, 향후 AI Agent Tool Layer.
+- **명시적 비범위:** PACS, DICOM storage/viewer(영상 저장·뷰어), EMR replacement(EMR 대체), insurance billing(보험 청구), prescription(처방), automated diagnosis(자동 진단).
+
+이 범위는 플랫폼의 목표이며 각 기능의 구현 완료를 뜻하지 않는다. EMR은 진료 원본, 기존 PACS/DICOM 서버는 영상 원본을 맡고, Nexus는 원내 LAN에서 운영 업무를 관리한다. AI Agent Tool Layer는 권한·사람 승인·감사기록을 전제로 하는 향후 단계다.
+
 [![CI](https://github.com/corcoidum/coriops-nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/corcoidum/coriops-nexus/actions/workflows/ci.yml)
 
 > 방향과 단계: [ROADMAP.md](ROADMAP.md) · AI 도우미·기여자 작업 규칙: [AGENTS.md](AGENTS.md)
 
 최근 구현·집 PC 실행: [2026-10-27 작업 인계](docs/checkpoint-2026-10-27.md).
 
-내시경 검체 채취 → 수탁 의뢰 → 결과 수신 → 원장 확인 → 환자 안내 → F/U 등록을 관리할 원내 LAN 전용 보조 업무대장이다. 진단·치료·F/U 주기는 원장이 결정한다. 조직검사 결과는 등록된 결과 코드(예: `TA#2(L)`)와 Sydney 등급만 구조화해 저장하고 판독문 원문은 저장하지 않는다(A11, 정식 앱 설계). 연락처, 주소, 주민등록번호, 보험정보는 저장하지 않는다.
+현재 첫 구현은 내시경 검체 채취 → 수탁 의뢰 → 결과 수신 → 원장 확인 → F/U 등록을 관리하는 보조 업무대장이다. 진단·치료·F/U 주기는 원장이 결정한다. 조직검사 결과는 등록된 결과 코드(예: `TA#2(L)`)와 Sydney 등급만 구조화해 저장하고 판독문 원문은 저장하지 않는다(A11, 정식 앱 설계). 연락처, 주소, 주민등록번호, 보험정보는 저장하지 않는다.
 
 **지금은 수동 입력으로 첫 화면을 확인한다.** 씨젠은 직접 확인하고 기존 Excel 장부는 평소대로 관리한다. 자동 로그인·약어 자동 변환은 뒤로 미룬다. 약어 사전 없이 합성 자료 12건으로 **오늘 씨젠 인계(3자·병 수 대조) → 결과 코드 입력 → 원장 지시 기록 → 재검 대상 관리** 흐름을 눌러볼 수 있다. 결과 설명은 EMR에서 관리한다(A12).
 
@@ -42,7 +52,7 @@ GitHub 저장소: [corcoidum/coriops-nexus](https://github.com/corcoidum/coriops
 
 ## 지정 기술 스택
 
-Python 3.12 / FastAPI / SQLAlchemy 2.0 / Alembic / Pydantic v2 / PostgreSQL 16 + psycopg 3 / Jinja2 + HTMX + Alpine.js / APScheduler / holidays / openpyxl / argon2-cffi / pytest / Docker Compose + Caddy. SQLite·Redis·외부 API·AI 기능을 추가하지 않는다.
+Python 3.12 / FastAPI / SQLAlchemy 2.0 / Alembic / Pydantic v2 / PostgreSQL 16 + psycopg 3 / Jinja2 + HTMX + Alpine.js / APScheduler / holidays / openpyxl / argon2-cffi / pytest / Docker Compose + Caddy. 현재 구현 단계에서는 SQLite·Redis·외부 API·AI 기능을 추가하지 않는다.
 
 Alembic은 DB 구조 변경을 순서가 있는 파일로 관리하는 도구다. Phase 1에서 `upgrade`로 적용하고 `downgrade`로 되돌리는 과정을 PostgreSQL에 검증한다.
 

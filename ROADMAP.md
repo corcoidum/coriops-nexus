@@ -1,8 +1,14 @@
 # CoriOps Nexus Roadmap
 
-> **Clinic Operations Knowledge & Workflow Engine**
-> 의원에 흩어진 데이터와 업무 규칙을 하나의 의미 체계로 연결하고,
-> 놓치면 안 되는 후속 업무를 찾아내고 추적하는 내부망 기반 Clinic Operations System.
+> **CoriOps Nexus = Clinic Operations Platform**
+>
+> CoriOps Nexus는 의원의 실제 업무 흐름과 규칙에 맞춘 **원내 맞춤형 Clinic Operations Platform**이다. 의원에 흩어진 데이터와 업무 규칙을 연결하고, 놓치면 안 되는 후속 업무를 찾아내고 추적한다.
+
+- **업무 범위:** Endoscopy Scheduling(내시경 예약), Pathology / Specimen(병리·검체), Lab, Screening(검진), BMD / Vaccine / Recall, Task Center, Audit.
+- **공통 기반·확장 범위:** PostgreSQL / Ontology, Rule Engine, Task Engine, 향후 AI Agent Tool Layer.
+- **명시적 비범위:** PACS, DICOM storage/viewer(영상 저장·뷰어), EMR replacement(EMR 대체), insurance billing(보험 청구), prescription(처방), automated diagnosis(자동 진단).
+
+이 범위는 플랫폼의 목표이며 각 기능의 구현 완료를 뜻하지 않는다. EMR은 진료 원본, 기존 PACS/DICOM 서버는 영상 원본을 맡고, Nexus는 원내 LAN에서 운영 업무를 관리한다. AI Agent Tool Layer는 권한·사람 승인·감사기록을 전제로 하는 향후 단계다.
 
 이 문서는 사용자가 작성한 로드맵 초안(2026-10-25)을 **현재 저장소 상태에 맞춰** 정리한 것이다. 비전·원칙은 초안을 따르고, 단계 순서·상태·세부 결정은 실제 구현과 업무 확인 결과(A01~A13)를 반영했다. 작업 규칙은 [AGENTS.md](AGENTS.md), 결정 기록은 [docs/open-questions.md](docs/open-questions.md)에 있다.
 
